@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/database_service.dart';
+import '../services/local_notification_service.dart';
 import '../services/subscription_service.dart';
 import '../services/sync_service.dart';
 import '../services/translations.dart';
@@ -80,6 +81,18 @@ class _HomeShellState extends State<HomeShell> {
       _status = status;
       _loading = false;
     });
+
+    // Alerte notification si l'abonnement expire bientôt ou est expiré.
+    final isExpired = status.state == SubscriptionState.expire;
+    final expiringSoon = (status.state == SubscriptionState.essai || status.state == SubscriptionState.actif)
+        && status.daysLeft <= 3;
+    if (isExpired || expiringSoon) {
+      await LocalNotificationService.showSubscriptionAlert(
+        isExpired: isExpired,
+        daysLeft: status.daysLeft,
+        lang: widget.languageController.value,
+      );
+    }
   }
 
   @override
@@ -128,7 +141,9 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(icon: const Icon(Icons.folder_outlined), label: t('archive', lang)),
           NavigationDestination(
             icon: Badge(
-              isLabelVisible: isExpired || (_status!.state == SubscriptionState.essai && _status!.daysLeft <= 1),
+              isLabelVisible: isExpired ||
+                  (_status!.state == SubscriptionState.essai && _status!.daysLeft <= 3) ||
+                  (_status!.state == SubscriptionState.actif && _status!.daysLeft <= 3),
               child: const Icon(Icons.settings_outlined),
             ),
             label: t('reglages', lang),
