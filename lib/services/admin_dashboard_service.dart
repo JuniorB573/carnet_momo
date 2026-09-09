@@ -153,11 +153,11 @@ class AdminDashboardService {
   /// Part de la date de fin d'abonnement actuelle si elle est encore
   /// valide (pour ne pas faire perdre de jours déjà payés), sinon
   /// d'aujourd'hui.
-  Future<void> extendSubscription(String agentId, int days) async {
+  Future<DateTime> extendSubscription(String agentId, int days) async {
     final now = DateTime.now();
     final row = await _client
         .from('subscriptions')
-        .select('paid_until')
+        .select('paid_until, trial_start')
         .eq('agent_id', agentId)
         .maybeSingle()
         .timeout(const Duration(seconds: 10));
@@ -170,10 +170,15 @@ class AdminDashboardService {
     }
     final next = base.add(Duration(days: days));
 
-    await _client.from('subscriptions').update({
+    // Utilisation de upsert au cas où la ligne n'existerait pas (ex: admin créé manuellement)
+    await _client.from('subscriptions').upsert({
+      'agent_id': agentId,
+      'trial_start': row?['trial_start'] ?? now.toUtc().toIso8601String(),
       'paid_until': next.toUtc().toIso8601String(),
       'updated_at': now.toUtc().toIso8601String(),
-    }).eq('agent_id', agentId).timeout(const Duration(seconds: 10));
+    }).timeout(const Duration(seconds: 10));
+
+    return next;
   }
 
   /// Supprime complètement un agent : subscriptions, transactions, feedback

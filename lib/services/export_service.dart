@@ -132,15 +132,18 @@ class ExportService {
 
           pw.SizedBox(height: 22),
 
-          // ── Section 2 : Journal des opérations ────────────────────
-          pw.Text('JOURNAL DES OPÉRATIONS', style: const pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+          // ── Section 2 : Journal — Dépôts ──────────────────────────
+          pw.Text('JOURNAL — DÉPÔTS', style: const pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
           pw.SizedBox(height: 8),
-          if (monthTx.isEmpty)
-            pw.Text('Aucune opération enregistrée.', style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey))
+          if (monthTx.where((tx) => tx.type == 'depot').isEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 12),
+              child: pw.Text('Aucun dépôt ce mois.', style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey)),
+            )
           else
             pw.TableHelper.fromTextArray(
-              headers: ['Date', 'Heure', 'Réseau', 'Type', 'N° Opération', 'Montant (F CFA)', 'Commission (F CFA)'],
-              data: monthTx.map((tx) {
+              headers: ['Date', 'Heure', 'Réseau', 'N° Opération', 'Montant (F CFA)', 'Commission (F CFA)'],
+              data: monthTx.where((tx) => tx.type == 'depot').map((tx) {
                 final net = kAllNetworks.firstWhere(
                   (n) => n['id'] == tx.network,
                   orElse: () => {'label': tx.network},
@@ -149,19 +152,54 @@ class ExportService {
                   DateFormat('dd/MM/yyyy').format(tx.date),
                   DateFormat('HH:mm').format(tx.date),
                   net,
-                  tx.type == 'depot' ? 'Dépôt' : 'Retrait',
                   tx.operationNumber,
                   fmtF(tx.montant),
                   fmtF(tx.commission),
                 ];
               }).toList(),
               headerStyle: const pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8, color: PdfColors.white),
-              headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey700),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.green800),
               cellStyle: const pw.TextStyle(fontSize: 8),
-              oddRowDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey50),
+              oddRowDecoration: const pw.BoxDecoration(color: PdfColors.green50),
               cellAlignments: {
+                4: pw.Alignment.centerRight,
                 5: pw.Alignment.centerRight,
-                6: pw.Alignment.centerRight,
+              },
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              cellPadding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            ),
+
+          pw.SizedBox(height: 22),
+
+          // ── Section 3 : Journal — Retraits ────────────────────────
+          pw.Text('JOURNAL — RETRAITS', style: const pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.orange)),
+          pw.SizedBox(height: 8),
+          if (monthTx.where((tx) => tx.type == 'retrait').isEmpty)
+            pw.Text('Aucun retrait ce mois.', style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey))
+          else
+            pw.TableHelper.fromTextArray(
+              headers: ['Date', 'Heure', 'Réseau', 'N° Opération', 'Montant (F CFA)', 'Commission (F CFA)'],
+              data: monthTx.where((tx) => tx.type == 'retrait').map((tx) {
+                final net = kAllNetworks.firstWhere(
+                  (n) => n['id'] == tx.network,
+                  orElse: () => {'label': tx.network},
+                )['label'] as String;
+                return [
+                  DateFormat('dd/MM/yyyy').format(tx.date),
+                  DateFormat('HH:mm').format(tx.date),
+                  net,
+                  tx.operationNumber,
+                  fmtF(tx.montant),
+                  fmtF(tx.commission),
+                ];
+              }).toList(),
+              headerStyle: const pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8, color: PdfColors.white),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.orange),
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              oddRowDecoration: const pw.BoxDecoration(color: PdfColors.orange50),
+              cellAlignments: {
+                4: pw.Alignment.centerRight,
+                5: pw.Alignment.centerRight,
               },
               border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
               cellPadding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),

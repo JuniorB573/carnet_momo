@@ -69,8 +69,24 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
   Future<void> _extend(int days) async {
     setState(() => _extending = true);
     try {
-      await _service.extendSubscription(_agent.id, days);
+      final newDate = await _service.extendSubscription(_agent.id, days);
       if (!mounted) return;
+      
+      // Mettre à jour l'agent localement pour que l'interface affiche la modification
+      setState(() {
+        _agent = AgentSummary(
+          id: _agent.id,
+          phoneNumber: _agent.phoneNumber,
+          country: _agent.country,
+          role: _agent.role,
+          subStatus: AgentSubStatus.actif,
+          renewalDate: newDate,
+          transactionCount: _agent.transactionCount,
+          totalMontant: _agent.totalMontant,
+          totalCommission: _agent.totalCommission,
+        );
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(t('prolongation_confirmee', _lang))),
       );
