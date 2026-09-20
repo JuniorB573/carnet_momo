@@ -1,8 +1,12 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+
+import 'database_service.dart';
 
 /// Gère l'inscription et la connexion des agents avec numéro de téléphone
 /// + code PIN, tout en s'appuyant en coulisses sur l'authentification
@@ -20,6 +24,10 @@ class AuthService {
   String _normalizePhone(String phone) {
     return phone.replaceAll(RegExp(r'[^\d]'), '');
   }
+
+  /// Version publique de la normalisation — utilisée par l'UI pour
+  /// comparer le numéro saisi avec celui enregistré sur l'appareil.
+  String normalizePhonePublic(String phone) => _normalizePhone(phone);
 
   String _toInternalEmail(String phone) {
     return '${_normalizePhone(phone)}@carnetmomo.local';
@@ -46,6 +54,8 @@ class AuthService {
   Future<void> _storeLocalPhone(String phone) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('local_phone_hash', _hashPin(_normalizePhone(phone)));
+    // Stocker aussi en clair (normalisé) pour pré-remplir l'écran de login.
+    await prefs.setString('local_phone_plain', _normalizePhone(phone));
   }
 
   /// Stocke le rôle localement pour éviter un appel réseau au lancement.
@@ -58,6 +68,13 @@ class AuthService {
   Future<String?> getLocalRole() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('local_role');
+  }
+
+  /// Retourne le numéro enregistré sur cet appareil (en clair, normalisé),
+  /// ou null si personne ne s'est jamais connecté.
+  Future<String?> getRegisteredPhone() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('local_phone_plain');
   }
 
   /// Vérifie le PIN saisi par rapport à celui enregistré en local, sans
@@ -93,11 +110,46 @@ class AuthService {
         prefs.getString('local_pin_hash') != null;
   }
 
+  Future<String?> _getDeviceId() async {
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        return androidInfo.id;
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        return iosInfo.identifierForVendor;
+      }
+    } catch (_) {
+      // Ignorer si on n'arrive pas à récupérer l'ID
+    }
+    return null;
+  }
+
   Future<AuthResponse> signUp(String phone, String pin, {String? whatsapp, String? country}) async {
     final normalized = _normalizePhone(phone);
     final normalizedWhatsapp = whatsapp != null && whatsapp.trim().isNotEmpty
         ? _normalizePhone(whatsapp)
         : normalized; // Même numéro par défaut si non précisé.
+
+    // 1. Vérifier si ce téléphone est déjà utilisé pour un autre compte
+    final deviceId = await _getDeviceId();
+    if (deviceId != null) {
+      try {
+        final existingDevice = await _client
+            .from('agents')
+            .select('id')
+            .eq('device_id', deviceId)
+            .maybeSingle();
+            
+        if (existingDevice != null) {
+          throw const AuthException('DEVICE_ALREADY_USED');
+        }
+      } catch (e) {
+        if (e is AuthException) rethrow;
+        // Erreur réseau : on laisse passer, la contrainte UNIQUE Supabase bloquera au besoin
+      }
+    }
 
     final response = await _client.auth.signUp(
       email: _toInternalEmail(phone),
@@ -111,6 +163,7 @@ class AuthService {
         'phone_number': normalized,
         'whatsapp_number': normalizedWhatsapp,
         if (country != null) 'country': country,
+        if (deviceId != null) 'device_id': deviceId,
       });
       await _client.from('subscriptions').insert({
         'agent_id': user.id,
@@ -167,21 +220,35 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    // Effacer les données locales SQLite avant de se déconnecter,
+    // pour qu'un autre compte ne voie jamais cet historique.
+    await DatabaseService.instance.clearAllData();
     try {
       await _client.auth.signOut();
     } catch (_) {} // Peut échouer hors ligne, on continue quand même
     final prefs = await SharedPreferences.getInstance();
-    // Effacer toutes les données locales à la déconnexion
+    // Effacer toutes les données locales à la déconnexion, sauf le numéro de 
+    // téléphone en clair (local_phone_plain) pour verrouiller l'appareil.
     await prefs.remove('local_pin_hash');
     await prefs.remove('local_phone_hash');
     await prefs.remove('local_role');
   }
 
-  /// Nombre de tentatives de PIN incorrectes autorisées avant déconnexion
-  /// forcée de l'écran de verrouillage — protège contre le simple
-  /// tâtonnement d'un code à 4 chiffres si le téléphone tombe en de
-  /// mauvaises mains.
-  static const int maxFailedAttempts = 5;
+  /// Nombre de tentatives de PIN incorrectes autorisées avant verrouillage
+  /// temporaire de l'application (ex: 15 minutes).
+  static const int maxFailedAttempts = 4;
+
+  Future<void> setLockoutUntil(DateTime until) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('lockout_until', until.toIso8601String());
+  }
+
+  Future<DateTime?> getLockoutUntil() async {
+    final prefs = await SharedPreferences.getInstance();
+    final str = prefs.getString('lockout_until');
+    if (str == null) return null;
+    return DateTime.tryParse(str);
+  }
 
   Future<int> registerFailedAttempt() async {
     final prefs = await SharedPreferences.getInstance();

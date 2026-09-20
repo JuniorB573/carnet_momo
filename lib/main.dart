@@ -13,6 +13,7 @@ import 'services/supabase_config.dart';
 import 'services/translations.dart';
 import 'services/version_check_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,12 +51,23 @@ class _CarnetMomoAppState extends State<CarnetMomoApp> {
   _AppStage _stage = _AppStage.auth;
   UpdateInfo? _updateInfo;
   bool _updateDismissed = false;
+  late final StreamSubscription<AuthState> _authSubscription;
 
   @override
   void initState() {
     super.initState();
     _decideInitialStage();
     _checkForUpdate();
+    
+    // Détecte si le compte a été supprimé côté serveur (le jeton devient invalide).
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedOut) {
+        if (mounted && _stage != _AppStage.auth) {
+          _auth.signOut(); // S'assure que le cache local est bien vidé
+          setState(() => _stage = _AppStage.auth);
+        }
+      }
+    });
   }
 
   /// Vérifié une seule fois au lancement, sans bloquer l'affichage de
@@ -139,5 +151,11 @@ class _CarnetMomoAppState extends State<CarnetMomoApp> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _authSubscription.cancel();
+    super.dispose();
   }
 }

@@ -32,9 +32,15 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _sameAsPhone = true;
   bool _loading = false;
   String? _error;
+  // Numéro déjà enregistré sur cet appareil (null = premier lancement)
+  String? _registeredPhone;
 
   late String _selectedCountry;
   String _lastAppliedIndicatif = '';
+
+  // Blocage temporaire après trop de tentatives de PIN (depuis l'écran de verrouillage)
+  DateTime? _lockoutUntil;
+  Timer? _lockoutTimer;
 
   String get _lang => widget.languageController.value;
 
@@ -43,6 +49,46 @@ class _AuthScreenState extends State<AuthScreen> {
     super.initState();
     _selectedCountry = widget.countryController.value;
     widget.languageController.addListener(_onLanguageChanged);
+    _loadRegisteredPhone();
+    _checkLockout();
+  }
+
+  Future<void> _checkLockout() async {
+    final until = await _auth.getLockoutUntil();
+    if (until != null && until.isAfter(DateTime.now())) {
+      setState(() => _lockoutUntil = until);
+      _startLockoutTimer();
+    }
+  }
+
+  void _startLockoutTimer() {
+    _lockoutTimer?.cancel();
+    _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_lockoutUntil == null || DateTime.now().isAfter(_lockoutUntil!)) {
+        timer.cancel();
+        setState(() {
+          _lockoutUntil = null;
+          _error = null;
+        });
+      } else {
+        setState(() {}); // Rafraîchir le compte à rebours
+      }
+    });
+  }
+
+  /// Charge le numéro enregistré sur cet appareil.
+  /// S'il existe, on passe directement en mode connexion et on pré-remplit.
+  Future<void> _loadRegisteredPhone() async {
+    final phone = await _auth.getRegisteredPhone();
+    if (!mounted) return;
+    if (phone != null) {
+      setState(() {
+        _registeredPhone = phone;
+        _isSignUp = false;
+        _phoneCtrl.text = phone;
+      });
+    }
   }
 
   void _onLanguageChanged() => setState(() {});
@@ -53,6 +99,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _phoneCtrl.dispose();
     _pinCtrl.dispose();
     _whatsappCtrl.dispose();
+    _lockoutTimer?.cancel();
     super.dispose();
   }
 
@@ -76,13 +123,50 @@ class _AuthScreenState extends State<AuthScreen> {
     final phone = _phoneCtrl.text.trim();
     final pin = _pinCtrl.text.trim();
 
-    if (phone.length < 8) {
+    // Validation du numéro : on retire tout ce qui n'est pas un chiffre
+    final cleanPhone = phone.replaceAll(RegExp(r'[^\d]'), '');
+    
+    if (cleanPhone.length < 8) {
       setState(() => _error = t('numero_invalide', _lang));
       return;
     }
+
+    if (_isSignUp) {
+      // En mode inscription, on vérifie que le numéro commence par l'indicatif du pays choisi
+      final indicatif = countryById(_selectedCountry)['indicatif']!.replaceAll('+', '');
+      if (!cleanPhone.startsWith(indicatif)) {
+        setState(() => _error = "Le numéro doit commencer par l'indicatif du pays (ex: +$indicatif).");
+        return;
+      }
+
+      if (!_sameAsPhone) {
+        final whatsapp = _whatsappCtrl.text.trim();
+        final cleanWhatsapp = whatsapp.replaceAll(RegExp(r'[^\d]'), '');
+        if (cleanWhatsapp.length < 8) {
+          setState(() => _error = "Numéro WhatsApp invalide.");
+          return;
+        }
+        if (!cleanWhatsapp.startsWith(indicatif)) {
+          setState(() => _error = "Le numéro WhatsApp doit commencer par l'indicatif (ex: +$indicatif).");
+          return;
+        }
+      }
+    }
+
     if (pin.length < 4) {
       setState(() => _error = t('pin_min_4', _lang));
       return;
+    }
+
+    // Bloquer la connexion ou l'inscription avec un numéro différent de celui enregistré.
+    if (_registeredPhone != null) {
+      final auth = AuthService();
+      final normalized = auth.normalizePhonePublic(phone);
+      final registeredNorm = auth.normalizePhonePublic(_registeredPhone!);
+      if (normalized != registeredNorm) {
+        setState(() => _error = t('err_numero_different', _lang));
+        return;
+      }
     }
 
     setState(() {
@@ -104,23 +188,61 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       widget.onAuthenticated(_isSignUp);
     } on AuthException catch (e) {
-      // Erreur Supabase explicite (auth) — jamais une erreur réseau.
+      // Erreur Supabase explicite (auth) — peut parfois envelopper une erreur réseau.
       final msg = e.message.toLowerCase();
+
+      // Supabase peut encapsuler une erreur réseau dans une AuthException
+      final isNetworkInAuth = msg.contains('network') ||
+          msg.contains('socket') ||
+          msg.contains('connection') ||
+          msg.contains('failed to fetch') ||
+          msg.contains('failed host lookup') ||
+          msg.contains('unreachable') ||
+          msg.contains('timeout') ||
+          msg.isEmpty;
+
       final isAlreadyExists = msg.contains('already registered') ||
           msg.contains('user already') ||
-          msg.contains('already exists');
+          msg.contains('already exists') ||
+          msg.contains('duplicate') ||
+          msg.contains('unique');
       final isAuthError = msg.contains('invalid login') ||
           msg.contains('invalid_credentials') ||
+          msg.contains('invalid credentials') ||
+          msg.contains('email or password') ||
+          msg.contains('password is incorrect') ||
           msg.contains('email not confirmed') ||
           msg.contains('user not found') ||
-          msg.contains('invalid password');
+          msg.contains('invalid password') ||
+          msg.contains('wrong password') ||
+          msg.contains('invalid email') ||
+          msg.contains('no user found') ||
+          msg.contains('credentials');
+      final isDeviceUsed = msg.contains('device_already_used');
+      final isRateLimit = msg.contains('rate') ||
+          msg.contains('too many') ||
+          msg.contains('limit');
 
-      if (isAlreadyExists) {
+      if (isNetworkInAuth) {
+        // Erreur réseau déguisée en AuthException
+        if (!_isSignUp) {
+          final canLoginOffline = await _auth.verifyLocalCredentials(phone, pin);
+          if (canLoginOffline) { widget.onAuthenticated(false); return; }
+        }
+        setState(() => _error = _isSignUp
+            ? t('err_internet_inscription', _lang)
+            : t('err_internet_connexion', _lang));
+      } else if (isAlreadyExists) {
         setState(() => _error = t('err_deja_inscrit', _lang));
       } else if (isAuthError) {
         setState(() => _error = t('err_mauvais_pin', _lang));
+      } else if (isDeviceUsed) {
+        setState(() => _error = t('err_appareil_deja_utilise', _lang));
+      } else if (isRateLimit) {
+        setState(() => _error = 'Trop de tentatives. Attendez quelques minutes et réessayez.');
       } else {
-        setState(() => _error = t('err_generique', _lang));
+        // Afficher le message brut pour aider à identifier les nouvelles erreurs
+        setState(() => _error = '${t('err_generique', _lang)} (${e.message})');
       }
     } catch (e) {
       final errMsg = e.toString().toLowerCase();
@@ -219,12 +341,24 @@ class _AuthScreenState extends State<AuthScreen> {
                 TextField(
                   controller: _phoneCtrl,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(hintText: '+229 01 XX XX XX XX'),
+                  // Verrouillé en mode connexion si un numéro est déjà enregistré
+                  readOnly: !_isSignUp && _registeredPhone != null,
+                  decoration: InputDecoration(
+                    hintText: '+229 01 XX XX XX XX',
+                    suffixIcon: (!_isSignUp && _registeredPhone != null)
+                        ? const Tooltip(
+                            message: 'Numéro lié à cet appareil',
+                            child: Icon(Icons.lock_outline, size: 18, color: AppColors.inkMuted),
+                          )
+                        : null,
+                  ),
                 ),
                 const SizedBox(height: 16),
 
-                Text(t('code_pin', _lang).toUpperCase(),
-                    style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
+                Text(
+                  (_isSignUp ? t('creer_code_pin', _lang) : t('code_pin', _lang)).toUpperCase(),
+                  style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 6),
                 TextField(
                   controller: _pinCtrl,
@@ -233,6 +367,13 @@ class _AuthScreenState extends State<AuthScreen> {
                   maxLength: 4,
                   decoration: const InputDecoration(hintText: '••••', counterText: ''),
                 ),
+                if (_isSignUp) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    t('pin_avertissement', _lang),
+                    style: const TextStyle(fontSize: 11.5, color: AppColors.orange, height: 1.4),
+                  ),
+                ],
 
                 if (_isSignUp) ...[
                   const SizedBox(height: 16),
@@ -273,24 +414,43 @@ class _AuthScreenState extends State<AuthScreen> {
                   Text(_error!, style: const TextStyle(color: AppColors.orange, fontSize: 13)),
                 ],
 
+                if (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!)) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.orange.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      "${t('trop_tentatives', _lang)}${_lockoutUntil!.difference(DateTime.now()).inMinutes + 1}${t('minutes', _lang)}",
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.orange, fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: _loading ? null : _submit,
+                  onPressed: (_loading || (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!))) ? null : _submit,
                   child: Text(_loading
                       ? t('un_instant', _lang)
                       : (_isSignUp ? t('creer_compte', _lang) : t('se_connecter', _lang))),
                 ),
-                const SizedBox(height: 12),
-                TextButton(
-                  onPressed: () => setState(() {
-                    _isSignUp = !_isSignUp;
-                    _error = null;
-                  }),
-                  child: Text(
-                    _isSignUp ? t('deja_compte', _lang) : t('pas_compte', _lang),
-                    style: const TextStyle(color: AppColors.green),
+                if (_registeredPhone == null) ...[
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _isSignUp = !_isSignUp;
+                      _error = null;
+                    }),
+                    child: Text(
+                      _isSignUp ? t('deja_compte', _lang) : t('pas_compte', _lang),
+                      style: const TextStyle(color: AppColors.green),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

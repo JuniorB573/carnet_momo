@@ -123,7 +123,15 @@ class SubscriptionService {
         if (row['paid_until'] != null) {
           await prefs.setString('paid_until', row['paid_until'] as String);
         }
+      } else {
+        // Si la requête réussit mais qu'aucune ligne n'est trouvée, cela
+        // signifie que l'agent a été supprimé de la base de données.
+        // On force la déconnexion immédiate.
+        await _client.auth.signOut();
       }
+    } on AuthException catch (_) {
+      // Jeton invalide ou expiré suite à une suppression de compte
+      await _client.auth.signOut();
     } catch (e) {
       // Pas de connexion ou serveur injoignable : on continue avec la
       // dernière valeur locale connue, sans bloquer l'agent.

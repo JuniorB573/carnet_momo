@@ -316,10 +316,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         color = AppColors.inkMuted;
         break;
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-      child: Text(label, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
+
+    // Afficher les jours restants pour les statuts actif et essai
+    final showDays = agent.subStatus == AgentSubStatus.essai ||
+        agent.subStatus == AgentSubStatus.actif;
+    final daysText = agent.daysLeft <= 1
+        ? '${agent.daysLeft} jour restant'
+        : '${agent.daysLeft} jours restants';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+          child: Text(label, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
+        ),
+        if (showDays) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color.withValues(alpha: 0.25)),
+            ),
+            child: Text(
+              daysText,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color),
+            ),
+          ),
+        ],
+      ],
     );
   }
 

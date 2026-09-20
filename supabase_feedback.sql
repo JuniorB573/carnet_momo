@@ -50,3 +50,22 @@ USING (
       AND public.agents.role = 'admin'
   )
 );
+
+-- ==============================================================================
+-- 8. Suppression complète : suppression de l'utilisateur Auth lorsqu'un agent est effacé
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.handle_agent_deletion() 
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Supprime l'utilisateur depuis auth.users quand sa ligne dans public.agents est supprimée
+  DELETE FROM auth.users WHERE id = OLD.id;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- S'assurer qu'aucun trigger du même nom n'existe
+DROP TRIGGER IF EXISTS on_agent_deleted ON public.agents;
+
+CREATE TRIGGER on_agent_deleted
+  AFTER DELETE ON public.agents
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_agent_deletion();

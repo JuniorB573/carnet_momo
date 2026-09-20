@@ -121,6 +121,15 @@ class DatabaseService {
     await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Efface toutes les transactions et toutes les tranches de la base locale.
+  /// Appelé lors de la déconnexion pour garantir que les données d'un compte
+  /// ne sont jamais visibles par un autre compte connecté sur le même appareil.
+  Future<void> clearAllData() async {
+    final db = await database;
+    await db.delete('transactions');
+    await db.delete('tranches');
+  }
+
   Future<List<MomoTransaction>> getTransactions({
     String? network,
     DateTime? from,

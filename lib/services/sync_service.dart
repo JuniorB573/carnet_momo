@@ -74,6 +74,12 @@ class SyncService {
 
     try {
       final remoteTx = await _client.from('transactions').select().eq('agent_id', agentId);
+      final remoteTranches = await _client.from('tranches').select().eq('agent_id', agentId);
+
+      // On vide d'abord la base locale pour s'assurer qu'elle ne contient
+      // que les données de ce compte — pas de mélange entre comptes.
+      await db.clearAllData();
+
       final rawDb = await db.database;
       for (final row in remoteTx) {
         await rawDb.insert(
@@ -91,7 +97,6 @@ class SyncService {
         );
       }
 
-      final remoteTranches = await _client.from('tranches').select().eq('agent_id', agentId);
       for (final row in remoteTranches) {
         await rawDb.insert(
           'tranches',
@@ -106,6 +111,9 @@ class SyncService {
           conflictAlgorithm: ConflictAlgorithm.ignore,
         );
       }
+    } on AuthException catch (_) {
+      // Jeton révoqué (compte supprimé), forcer la déconnexion
+      await _client.auth.signOut();
     } catch (_) {
       // Pas de connexion au premier lancement : l'agent peut quand même
       // utiliser l'app hors ligne, la restauration se fera plus tard.

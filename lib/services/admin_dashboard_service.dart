@@ -15,6 +15,7 @@ class AgentSummary {
   final String role;
   final AgentSubStatus subStatus;
   final DateTime? renewalDate;
+  final int daysLeft;
   final int transactionCount;
   final int totalMontant;
   final int totalCommission;
@@ -26,6 +27,7 @@ class AgentSummary {
     required this.role,
     required this.subStatus,
     required this.renewalDate,
+    required this.daysLeft,
     required this.transactionCount,
     required this.totalMontant,
     required this.totalCommission,
@@ -83,6 +85,31 @@ class AdminDashboardService {
     return AgentSubStatus.expire;
   }
 
+  /// Calcule le nombre de jours restants pour un agent donné.
+  int _daysLeftFromRow(Map<String, dynamic>? sub) {
+    if (sub == null) return 0;
+    final now = DateTime.now();
+
+    final paidUntilStr = sub['paid_until'] as String?;
+    if (paidUntilStr != null) {
+      final paidUntil = DateTime.parse(paidUntilStr).toLocal();
+      if (paidUntil.isAfter(now)) {
+        return paidUntil.difference(now).inDays + 1;
+      }
+    }
+
+    final trialStartStr = sub['trial_start'] as String?;
+    if (trialStartStr != null) {
+      final trialStart = DateTime.parse(trialStartStr).toLocal();
+      final daysElapsed = now.difference(trialStart).inHours / 24;
+      if (daysElapsed <= _trialDays) {
+        return (_trialDays - daysElapsed).ceil().clamp(0, _trialDays);
+      }
+    }
+
+    return 0;
+  }
+
   DateTime? _renewalFromRow(Map<String, dynamic>? sub) {
     final paidUntilStr = sub?['paid_until'] as String?;
     if (paidUntilStr == null) return null;
@@ -121,6 +148,7 @@ class AdminDashboardService {
         role: row['role'] as String? ?? 'agent',
         subStatus: _statusFromRow(sub),
         renewalDate: _renewalFromRow(sub),
+        daysLeft: _daysLeftFromRow(sub),
         transactionCount: txCountByAgent[id] ?? 0,
         totalMontant: txMontantByAgent[id] ?? 0,
         totalCommission: txCommissionByAgent[id] ?? 0,

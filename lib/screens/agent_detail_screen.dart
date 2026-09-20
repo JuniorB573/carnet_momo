@@ -81,6 +81,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
           role: _agent.role,
           subStatus: AgentSubStatus.actif,
           renewalDate: newDate,
+          daysLeft: newDate.difference(DateTime.now()).inDays + 1,
           transactionCount: _agent.transactionCount,
           totalMontant: _agent.totalMontant,
           totalCommission: _agent.totalCommission,

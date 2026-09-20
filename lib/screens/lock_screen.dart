@@ -63,13 +63,11 @@ class _LockScreenState extends State<LockScreen> {
       final attempts = await _auth.registerFailedAttempt();
       if (!mounted) return;
       if (attempts >= AuthService.maxFailedAttempts) {
+        // Stocker un blocage de 30 minutes, déconnecter et renvoyer à la page de connexion
         await _auth.resetFailedAttempts();
-        setState(() {
-          _error = t('trop_tentatives', _lang);
-          _checking = false;
-          _pinCtrl.clear();
-        });
-        await Future.delayed(const Duration(seconds: 2));
+        final until = DateTime.now().add(const Duration(minutes: 30));
+        await _auth.setLockoutUntil(until);
+        await _auth.signOut();
         if (!mounted) return;
         widget.onSignOut();
         return;
