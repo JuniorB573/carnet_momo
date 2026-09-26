@@ -69,3 +69,33 @@ DROP TRIGGER IF EXISTS on_agent_deleted ON public.agents;
 CREATE TRIGGER on_agent_deleted
   AFTER DELETE ON public.agents
   FOR EACH ROW EXECUTE PROCEDURE public.handle_agent_deletion();
+
+-- ==============================================================================
+-- 9. Autoriser les administrateurs à modifier les abonnements (RLS)
+-- ==============================================================================
+DROP POLICY IF EXISTS "Les admins peuvent modifier les abonnements" ON public.subscriptions;
+DROP POLICY IF EXISTS "Les admins peuvent inserer des abonnements" ON public.subscriptions;
+
+CREATE POLICY "Les admins peuvent modifier les abonnements"
+ON public.subscriptions
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM public.agents
+    WHERE public.agents.id = auth.uid()
+      AND public.agents.role = 'admin'
+  )
+);
+
+CREATE POLICY "Les admins peuvent inserer des abonnements"
+ON public.subscriptions
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.agents
+    WHERE public.agents.id = auth.uid()
+      AND public.agents.role = 'admin'
+  )
+);
