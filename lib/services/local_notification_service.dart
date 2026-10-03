@@ -19,6 +19,14 @@ class LocalNotificationService {
     _initialized = true;
   }
 
+  /// Demande explicitement l'autorisation d'envoyer des notifications (utile pour Android 13+)
+  static Future<void> requestPermission() async {
+    if (!_initialized) await init();
+    final androidImpl = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await androidImpl?.requestNotificationsPermission();
+  }
+
   static Future<void> showTransactionNotification({
     required String title,
     required String body,

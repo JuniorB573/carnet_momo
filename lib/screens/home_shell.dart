@@ -42,6 +42,7 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     _loadStatus();
     _restoreFromBackup();
+    LocalNotificationService.requestPermission();
     widget.languageController.addListener(_onLanguageChanged);
     widget.countryController.addListener(_onCountryChanged);
     // Aligne le réseau sélectionné sur le pays déjà enregistré au

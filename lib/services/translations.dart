@@ -3,6 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const Map<String, Map<String, String>> kTranslations = {
   'fr': {
+    'nous_contacter': 'Nous contacter',
+    'contacter_support': 'Contacter le support (WhatsApp)',
+    'contacter_support_desc': 'Une question ou un problème ? Écrivez-nous',
     'saisie': 'Saisie',
     'historique': 'Historique',
     'reglages': 'Réglages',
@@ -154,6 +157,9 @@ const Map<String, Map<String, String>> kTranslations = {
     'avis_supprime': 'Avis supprimé.',
   },
   'en': {
+    'nous_contacter': 'Contact us',
+    'contacter_support': 'Contact support (WhatsApp)',
+    'contacter_support_desc': 'Any question or issue? Text us',
     'saisie': 'Entry',
     'historique': 'History',
     'reglages': 'Settings',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/admin_dashboard_service.dart';
 import '../services/country_controller.dart';
@@ -35,6 +36,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<AgentFeedback> _feedbacks = [];
   bool _loading = true;
   String? _error;
+  RealtimeChannel? _subscription;
 
   String get _lang => widget.languageController.value;
 
@@ -43,21 +45,51 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     super.initState();
     widget.languageController.addListener(_onLanguageChanged);
     _load();
+    _setupRealtime();
+  }
+
+  void _setupRealtime() {
+    _subscription = Supabase.instance.client
+        .channel('public:transactions')
+        .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'transactions',
+            callback: (payload) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      _lang == 'fr'
+                          ? 'Nouvelle transaction enregistrée par un agent !'
+                          : 'New transaction recorded by an agent!',
+                    ),
+                    duration: const Duration(seconds: 4),
+                    backgroundColor: AppColors.green,
+                  ),
+                );
+                _load(showLoading: false);
+              }
+            })
+        .subscribe();
   }
 
   void _onLanguageChanged() => setState(() {});
 
   @override
   void dispose() {
+    _subscription?.unsubscribe();
     widget.languageController.removeListener(_onLanguageChanged);
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final agents = await _service.fetchAgentSummaries();
       final feedbacks = await _service.fetchFeedbacks();

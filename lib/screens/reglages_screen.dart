@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/tranche.dart';
 import '../services/country_controller.dart';
@@ -272,6 +273,12 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
             ),
           ),
         ),
+
+        const SizedBox(height: 24),
+        Text(t('nous_contacter', _lang).toUpperCase(),
+            style: const TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 10),
+        _SupportCard(lang: _lang),
 
         const SizedBox(height: 24),
         Text(t('donne_avis', _lang),
@@ -619,6 +626,68 @@ class _FeedbackCardState extends State<_FeedbackCard> {
               ),
             ),
           ],
+        ),
+      ),
+      ),
+    );
+  }
+}
+
+/// Carte permettant de contacter l'équipe via WhatsApp
+class _SupportCard extends StatelessWidget {
+  final String lang;
+  const _SupportCard({required this.lang});
+
+  Future<void> _openWhatsApp() async {
+    // Remplacer par le numéro de téléphone de l'équipe support (avec l'indicatif)
+    final phoneNumber = '2290153467177'; 
+    final message = lang == 'fr' 
+        ? 'Bonjour l\'équipe Carnet MoMo, j\'ai besoin d\'aide :'
+        : 'Hello Carnet MoMo team, I need some help:';
+    
+    final url = Uri.parse('https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: _openWhatsApp,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.green.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.support_agent, color: AppColors.green, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t('contacter_support', lang),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      t('contacter_support_desc', lang),
+                      style: const TextStyle(fontSize: 12, color: AppColors.inkSoft),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 20, color: AppColors.inkMuted),
+            ],
+          ),
         ),
       ),
     );
