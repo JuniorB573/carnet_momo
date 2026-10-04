@@ -628,7 +628,6 @@ class _FeedbackCardState extends State<_FeedbackCard> {
           ],
         ),
       ),
-      ),
     );
   }
 }
