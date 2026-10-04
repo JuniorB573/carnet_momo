@@ -14,6 +14,7 @@ import '../services/translations.dart';
 import '../theme/app_theme.dart';
 import '../theme/countries.dart';
 import '../theme/networks.dart';
+import '../services/auth_service.dart';
 import 'abonnement_screen.dart';
 
 class ReglagesScreen extends StatefulWidget {
@@ -170,6 +171,122 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
     );
   }
 
+  Widget _changePinCard() {
+    return Card(
+      child: InkWell(
+        onTap: _showChangePinDialog,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.orange.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.lock_outline, color: AppColors.orange, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  t('modifier_code_pin', _lang),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink),
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 20, color: AppColors.inkMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showChangePinDialog() async {
+    final oldPinCtrl = TextEditingController();
+    final newPinCtrl = TextEditingController();
+    final confirmPinCtrl = TextEditingController();
+    String? error;
+    bool saving = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text(t('modifier_code_pin', _lang), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: oldPinCtrl,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 4,
+                    decoration: InputDecoration(hintText: t('code_pin_actuel', _lang)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: newPinCtrl,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 4,
+                    decoration: InputDecoration(hintText: t('nouveau_code_pin', _lang)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: confirmPinCtrl,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 4,
+                    decoration: InputDecoration(hintText: t('confirmer_nouveau_pin', _lang)),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(error!, style: const TextStyle(color: AppColors.orange, fontSize: 13)),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(t('annuler', _lang), style: const TextStyle(color: AppColors.inkMuted)),
+                ),
+                ElevatedButton(
+                  onPressed: saving ? null : () async {
+                    setStateDialog(() { error = null; saving = true; });
+                    try {
+                      if (newPinCtrl.text != confirmPinCtrl.text) {
+                        throw t('les_pins_ne_correspondent_pas', _lang);
+                      }
+                      if (newPinCtrl.text.length < 4) {
+                        throw t('pin_min_4', _lang);
+                      }
+                      await AuthService().changePin(oldPinCtrl.text, newPinCtrl.text);
+                      if (!mounted) return;
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(t('pin_modifie_succes', _lang)), backgroundColor: AppColors.green),
+                      );
+                    } catch (e) {
+                      setStateDialog(() { error = e.toString().replaceFirst('Exception: ', ''); });
+                    } finally {
+                      setStateDialog(() { saving = false; });
+                    }
+                  },
+                  child: saving
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Text(t('changer', _lang)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final networks = networksForCountry(widget.countryController.value);
@@ -273,6 +390,12 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
             ),
           ),
         ),
+
+        const SizedBox(height: 24),
+        Text(t('code_pin', _lang).toUpperCase(),
+            style: const TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 10),
+        _changePinCard(),
 
         const SizedBox(height: 24),
         Text(t('nous_contacter', _lang).toUpperCase(),
@@ -645,8 +768,10 @@ class _SupportCard extends StatelessWidget {
         : 'Hello Carnet MoMo team, I need some help:';
     
     final url = Uri.parse('https://wa.me/$phoneNumber?text=${Uri.encodeComponent(message)}');
-    if (await canLaunchUrl(url)) {
+    try {
       await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Could not launch WhatsApp: $e');
     }
   }
 

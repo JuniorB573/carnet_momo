@@ -234,6 +234,26 @@ class AuthService {
     await prefs.remove('local_role');
   }
 
+  /// Change le PIN de l'agent.
+  Future<void> changePin(String oldPin, String newPin) async {
+    // 1. Vérifier l'ancien PIN
+    final ok = await verifyLocalPin(oldPin);
+    if (!ok) throw Exception('Mauvais ancien PIN');
+    
+    // 2. Mettre à jour sur Supabase (si en ligne)
+    try {
+      await _client.auth.updateUser(UserAttributes(password: _padPin(newPin)));
+    } catch (_) {
+      // Si on est hors ligne, ça échouera, mais on peut quand même forcer
+      // la mise à jour locale si on le souhaite. 
+      // Pour des raisons de sécurité, on va exiger une connexion internet pour changer le PIN.
+      rethrow;
+    }
+    
+    // 3. Mettre à jour localement
+    await _storeLocalPin(newPin);
+  }
+
   /// Nombre de tentatives de PIN incorrectes autorisées avant verrouillage
   /// temporaire de l'application (ex: 15 minutes).
   static const int maxFailedAttempts = 4;

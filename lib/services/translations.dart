@@ -155,6 +155,13 @@ const Map<String, Map<String, String>> kTranslations = {
     'confirmer_suppression_avis_titre': 'Supprimer cet avis ?',
     'confirmer_suppression_avis_texte': 'Cet avis sera supprimé définitivement.',
     'avis_supprime': 'Avis supprimé.',
+    'modifier_code_pin': 'Modifier mon code PIN',
+    'code_pin_actuel': 'Code PIN actuel',
+    'nouveau_code_pin': 'Nouveau code PIN',
+    'confirmer_nouveau_pin': 'Confirmer le nouveau PIN',
+    'les_pins_ne_correspondent_pas': 'Les codes PIN ne correspondent pas.',
+    'pin_modifie_succes': 'Code PIN modifié avec succès.',
+    'changer': 'Changer',
   },
   'en': {
     'nous_contacter': 'Contact us',
@@ -309,6 +316,13 @@ const Map<String, Map<String, String>> kTranslations = {
     'confirmer_suppression_avis_texte': 'This review will be permanently deleted.',
     'avis_supprime': 'Review deleted.',
     'err_numero_different': '🔒 This device is linked to the registered number. Sign out first to switch accounts.',
+    'modifier_code_pin': 'Change my PIN code',
+    'code_pin_actuel': 'Current PIN',
+    'nouveau_code_pin': 'New PIN',
+    'confirmer_nouveau_pin': 'Confirm new PIN',
+    'les_pins_ne_correspondent_pas': 'PINs do not match.',
+    'pin_modifie_succes': 'PIN successfully changed.',
+    'changer': 'Change',
   },
 };
 
