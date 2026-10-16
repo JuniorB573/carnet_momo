@@ -181,12 +181,8 @@ def generate_cahier_des_charges_rag_style(output_path):
             Paragraph("<b>BIAHOU Ahossou Junior Marie-Clémenceau</b>", t_cell)
         ],
         [
-            Paragraph("<b>Encadrant</b>", t_cell_bold),
-            Paragraph("<b>Ing. LANMAYIKPOHOUE Sèdofi Hope</b>", t_cell)
-        ],
-        [
             Paragraph("<b>Version & Date</b>", t_cell_bold),
-            Paragraph("v2.0 — Octobre 2026 (Version Stabilisée de Production)", t_cell)
+            Paragraph("v1.0 — Octobre 2026 (Version Initiale de Production)", t_cell)
         ]
     ]
     t_top = Table(header_data, colWidths=[120, 375])
@@ -433,7 +429,7 @@ def generate_cahier_des_charges_rag_style(output_path):
         [Paragraph("<b>Phase 2</b>", t_cell_bold), Paragraph("Backend Supabase, authentification par téléphone, politique RLS et synchronisation Cloud.", t_cell), Paragraph("Terminé ✓", t_cell_bold)],
         [Paragraph("<b>Phase 3</b>", t_cell_bold), Paragraph("Modules de synthèse financière, génération de bilans PDF haute définition et archivage mensuel.", t_cell), Paragraph("Terminé ✓", t_cell_bold)],
         [Paragraph("<b>Phase 4</b>", t_cell_bold), Paragraph("Passerelle SasPay (800 F), notifications locales d'activation, console Super-Admin et anti-fraude.", t_cell), Paragraph("Terminé ✓", t_cell_bold)],
-        [Paragraph("<b>Phase 5</b>", t_cell_bold), Paragraph("Compilation Release APK v2.0, tests de charge, déploiement sur le terrain et suivi des feedbacks.", t_cell), Paragraph("En cours (Actif)", t_cell_bold)]
+        [Paragraph("<b>Phase 5</b>", t_cell_bold), Paragraph("Compilation Release APK v1.0, tests de charge, déploiement sur le terrain et suivi des feedbacks.", t_cell), Paragraph("En cours (Actif)", t_cell_bold)]
     ]
     t_plan = Table(plan_data, colWidths=[65, 340, 90])
     t_plan.setStyle(TableStyle([
@@ -508,11 +504,6 @@ def generate_cahier_des_charges_rag_style(output_path):
             Paragraph("<b>Porteur du projet</b>", t_cell_bold),
             Paragraph("<b>BIAHOU Ahossou Junior Marie-Clémenceau</b>", t_cell),
             Paragraph("Concepteur, Développeur & Porteur unique<br/>Approuvé pour conformité technique et produit", t_cell)
-        ],
-        [
-            Paragraph("<b>Encadrant du projet</b>", t_cell_bold),
-            Paragraph("<b>Ing. LANMAYIKPOHOUE Sèdofi Hope</b>", t_cell_bold),
-            Paragraph("Vu et validé pour diffusion", t_cell_bold)
         ]
     ]
     t_val = Table(val_data, colWidths=[120, 225, 150])
@@ -520,10 +511,9 @@ def generate_cahier_des_charges_rag_style(output_path):
         ('BACKGROUND', (0,0), (-1,0), C_HEADER_BG),
         ('BOX', (0,0), (-1,-1), 1, C_BORDER),
         ('INNERGRID', (0,0), (-1,-1), 0.5, C_BORDER),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-        ('ROWBACKGROUNDS', (0,1), (-1,-2), [colors.white, C_LIGHT_BG]),
-        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#FEF3C7")), # Mise en avant encadrant
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('BACKGROUND', (0,1), (-1,1), colors.white),
     ]))
     story.append(t_val)
     
