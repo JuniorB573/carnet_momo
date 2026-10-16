@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/momo_transaction.dart';
 import '../services/admin_dashboard_service.dart';
+import '../services/local_notification_service.dart';
 import '../services/formatters.dart';
 import '../services/translations.dart';
 import '../theme/app_theme.dart';
@@ -91,6 +94,18 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(t('prolongation_confirmee', _lang))),
       );
+
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      if (_agent.id == currentUserId) {
+        final prefs = await SharedPreferences.getInstance();
+        final iso = newDate.toUtc().toIso8601String();
+        await prefs.setString('paid_until', iso);
+        await prefs.setString('last_notified_paid_until', iso);
+        await LocalNotificationService.showSubscriptionActivatedNotification(
+          renewalDate: newDate,
+          lang: _lang,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

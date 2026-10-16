@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intl/intl.dart';
 
 /// Affiche une notification directement sur le téléphone de l'agent,
 /// immédiatement après une action (ex: transaction enregistrée).
@@ -86,5 +87,47 @@ class LocalNotificationService {
     const details = NotificationDetails(android: androidDetails);
     // ID fixe (42) pour éviter les doublons : une seule notif d'abo à la fois.
     await _plugin.show(42, title, body, details);
+  }
+
+  /// Affiche une notification de confirmation quand un abonnement est activé
+  /// ou prolongé (soit par paiement automatique SasPay, soit manuellement par un admin).
+  static Future<void> showSubscriptionActivatedNotification({
+    DateTime? renewalDate,
+    required String lang,
+  }) async {
+    if (!_initialized) await init();
+
+    final dateStr = renewalDate != null
+        ? DateFormat('dd/MM/yyyy').format(renewalDate.toLocal())
+        : null;
+
+    final title = lang == 'fr'
+        ? '🎉 Abonnement activé !'
+        : '🎉 Subscription activated!';
+
+    final body = lang == 'fr'
+        ? (dateStr != null
+            ? 'Votre abonnement est actif jusqu\'au $dateStr. Vous pouvez maintenant continuer à travailler et utiliser l\'app.'
+            : 'Votre abonnement est maintenant actif. Vous pouvez continuer à travailler et utiliser l\'app.')
+        : (dateStr != null
+            ? 'Your subscription is active until $dateStr. You can now continue working and using the app.'
+            : 'Your subscription is now active. You can continue working and using the app.');
+
+    const androidDetails = AndroidNotificationDetails(
+      'subscription_success_channel',
+      'Activation d\'abonnement',
+      channelDescription: 'Notifications de confirmation d\'activation ou prolongation d\'abonnement',
+      importance: Importance.max,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+    );
+    const details = NotificationDetails(android: androidDetails);
+    await _plugin.show(
+      43,
+      title,
+      body,
+      details,
+    );
   }
 }

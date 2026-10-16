@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/database_service.dart';
 import '../services/local_notification_service.dart';
 import '../services/subscription_service.dart';
@@ -29,25 +31,64 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _tabIndex = 0;
   final NetworkController networkController = NetworkController();
   final SubscriptionService subscriptionService = SubscriptionService();
 
   SubscriptionStatus? _status;
   bool _loading = true;
+  RealtimeChannel? _realtimeChannel;
+  Timer? _periodicTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadStatus();
     _restoreFromBackup();
+    _setupRealtimeSubscription();
     LocalNotificationService.requestPermission();
     widget.languageController.addListener(_onLanguageChanged);
     widget.countryController.addListener(_onCountryChanged);
     // Aligne le réseau sélectionné sur le pays déjà enregistré au
     // lancement (ex: après une relance de l'app).
     networkController.value = networksForCountry(widget.countryController.value).first['id'] as String;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadStatus();
+    }
+  }
+
+  void _setupRealtimeSubscription() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    // Écoute en temps réel de la table 'subscriptions' pour cet agent
+    _realtimeChannel = Supabase.instance.client
+        .channel('agent_subscription_${user.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'subscriptions',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'agent_id',
+            value: user.id,
+          ),
+          callback: (_) {
+            if (mounted) _loadStatus();
+          },
+        )
+        .subscribe();
+
+    // Polling de sécurité toutes les 30 secondes
+    _periodicTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _loadStatus();
+    });
   }
 
   /// Si l'agent change de pays depuis les Réglages, on rebascule
@@ -68,6 +109,9 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _realtimeChannel?.unsubscribe();
+    _periodicTimer?.cancel();
     widget.languageController.removeListener(_onLanguageChanged);
     widget.countryController.removeListener(_onCountryChanged);
     super.dispose();

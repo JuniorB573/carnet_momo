@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'local_notification_service.dart';
 
 enum SubscriptionState { essai, actif, expire }
 
@@ -30,7 +31,7 @@ class SubscriptionStatus {
 /// `subscriptions.paid_until`, repris ici au prochain _syncFromServer.
 class SubscriptionService {
   static const int trialDays = 7;
-  static const int monthlyFeeFcfa = 1000;
+  static const int monthlyFeeFcfa = 800;
 
 
   final _client = Supabase.instance.client;
@@ -80,7 +81,7 @@ class SubscriptionService {
     final now = DateTime.now();
 
     if (paidUntilStr != null) {
-      final paidUntil = DateTime.parse(paidUntilStr);
+      final paidUntil = DateTime.parse(paidUntilStr).toLocal();
       if (paidUntil.isAfter(now)) {
         final daysLeft = paidUntil.difference(now).inDays + 1;
         return SubscriptionStatus(
@@ -91,7 +92,7 @@ class SubscriptionService {
       }
     }
 
-    final trialStart = DateTime.parse(trialStartStr);
+    final trialStart = DateTime.parse(trialStartStr).toLocal();
     final daysElapsed = now.difference(trialStart).inHours / 24;
 
     if (daysElapsed <= trialDays) {
@@ -119,9 +120,25 @@ class SubscriptionService {
           .timeout(const Duration(seconds: 3));
 
       if (row != null) {
-        await prefs.setString('trial_start', row['trial_start'] as String);
+        if (row['trial_start'] != null) {
+          await prefs.setString('trial_start', row['trial_start'] as String);
+        }
         if (row['paid_until'] != null) {
-          await prefs.setString('paid_until', row['paid_until'] as String);
+          final serverPaidUntil = row['paid_until'] as String;
+          final lastNotified = prefs.getString('last_notified_paid_until');
+          final parsed = DateTime.tryParse(serverPaidUntil)?.toLocal();
+
+          if (parsed != null && parsed.isAfter(DateTime.now())) {
+            if (lastNotified != serverPaidUntil) {
+              await prefs.setString('last_notified_paid_until', serverPaidUntil);
+              final lang = prefs.getString('language') ?? 'fr';
+              await LocalNotificationService.showSubscriptionActivatedNotification(
+                renewalDate: parsed,
+                lang: lang,
+              );
+            }
+          }
+          await prefs.setString('paid_until', serverPaidUntil);
         }
       } else {
         // Si la requête réussit mais qu'aucune ligne n'est trouvée, cela

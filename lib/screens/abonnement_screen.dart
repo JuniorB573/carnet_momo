@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -30,6 +31,7 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
   final _service = SubscriptionService();
   String? _error;
   bool _loading = false;
+  Timer? _pollTimer;
 
   String get _lang => widget.languageController.value;
 
@@ -43,8 +45,34 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     widget.languageController.removeListener(_onLanguageChanged);
     super.dispose();
+  }
+
+  void _startPaymentPolling() {
+    _pollTimer?.cancel();
+    int count = 0;
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+      count++;
+      if (count > 20 || !mounted) {
+        timer.cancel();
+        return;
+      }
+      final s = await _service.getStatus();
+      if (!mounted) return;
+      if (s.state == SubscriptionState.actif) {
+        timer.cancel();
+        widget.onStatusChanged();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t('abonnement_active_msg', _lang)),
+            backgroundColor: AppColors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    });
   }
 
   Future<void> _payWithSasPay() async {
@@ -61,6 +89,7 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
       // SasPay aura mis à jour le statut côté serveur ; l'agent peut
       // revenir sur cet écran pour voir la mise à jour.
       widget.onStatusChanged();
+      _startPaymentPolling();
     } catch (_) {
       setState(() => _error = t('echec_paiement', _lang));
     } finally {
