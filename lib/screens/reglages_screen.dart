@@ -437,7 +437,7 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
     );
   }
 
-  Widget _countryChip(Map<String, String> c) {
+  Widget _countryChip(Map<String, dynamic> c) {
     final active = widget.countryController.value == c['id'];
     return GestureDetector(
       onTap: () => widget.countryController.setCountry(c['id']!),

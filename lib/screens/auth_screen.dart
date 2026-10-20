@@ -48,6 +48,9 @@ class _AuthScreenState extends State<AuthScreen> {
   void initState() {
     super.initState();
     _selectedCountry = widget.countryController.value;
+    final indicatif = countryById(_selectedCountry)['indicatif']!;
+    _phoneCtrl.text = '$indicatif ';
+    _lastAppliedIndicatif = '$indicatif ';
     widget.languageController.addListener(_onLanguageChanged);
     _loadRegisteredPhone();
     _checkLockout();
@@ -123,31 +126,26 @@ class _AuthScreenState extends State<AuthScreen> {
     final phone = _phoneCtrl.text.trim();
     final pin = _pinCtrl.text.trim();
 
-    // Validation du numéro : on retire tout ce qui n'est pas un chiffre
+    // Validation du numéro de téléphone
     final cleanPhone = phone.replaceAll(RegExp(r'[^\d]'), '');
-    
     if (cleanPhone.length < 8) {
       setState(() => _error = t('numero_invalide', _lang));
       return;
     }
 
     if (_isSignUp) {
-      // En mode inscription, on vérifie que le numéro commence par l'indicatif du pays choisi
-      final indicatif = countryById(_selectedCountry)['indicatif']!.replaceAll('+', '');
-      if (!cleanPhone.startsWith(indicatif)) {
-        setState(() => _error = "Le numéro doit commencer par l'indicatif du pays (ex: +$indicatif).");
+      // Validation stricte du format et de la longueur selon le pays choisi
+      final phoneError = validatePhoneForCountry(phone, _selectedCountry, isWhatsApp: false, lang: _lang);
+      if (phoneError != null) {
+        setState(() => _error = phoneError);
         return;
       }
 
       if (!_sameAsPhone) {
         final whatsapp = _whatsappCtrl.text.trim();
-        final cleanWhatsapp = whatsapp.replaceAll(RegExp(r'[^\d]'), '');
-        if (cleanWhatsapp.length < 8) {
-          setState(() => _error = "Numéro WhatsApp invalide.");
-          return;
-        }
-        if (!cleanWhatsapp.startsWith(indicatif)) {
-          setState(() => _error = "Le numéro WhatsApp doit commencer par l'indicatif (ex: +$indicatif).");
+        final whatsappError = validatePhoneForCountry(whatsapp, _selectedCountry, isWhatsApp: true, lang: _lang);
+        if (whatsappError != null) {
+          setState(() => _error = whatsappError);
           return;
         }
       }
@@ -188,24 +186,26 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       widget.onAuthenticated(_isSignUp);
     } on AuthException catch (e) {
-      // Erreur Supabase explicite (auth) — peut parfois envelopper une erreur réseau.
       final msg = e.message.toLowerCase();
+      final code = (e.code ?? '').toLowerCase();
+      final statusCode = e.statusCode ?? '';
 
-      // Supabase peut encapsuler une erreur réseau dans une AuthException
-      final isNetworkInAuth = msg.contains('network') ||
+      final isAlreadyExists = code == 'user_already_exists' ||
+          statusCode == '422' ||
+          msg.contains('already registered') ||
+          msg.contains('user already') ||
+          msg.contains('already exists') ||
+          msg.contains('duplicate') ||
+          msg.contains('unique');
+
+      final isNetworkInAuth = !isAlreadyExists && (msg.contains('network') ||
           msg.contains('socket') ||
           msg.contains('connection') ||
           msg.contains('failed to fetch') ||
           msg.contains('failed host lookup') ||
           msg.contains('unreachable') ||
-          msg.contains('timeout') ||
-          msg.isEmpty;
+          msg.contains('timeout'));
 
-      final isAlreadyExists = msg.contains('already registered') ||
-          msg.contains('user already') ||
-          msg.contains('already exists') ||
-          msg.contains('duplicate') ||
-          msg.contains('unique');
       final isAuthError = msg.contains('invalid login') ||
           msg.contains('invalid_credentials') ||
           msg.contains('invalid credentials') ||
@@ -223,7 +223,9 @@ class _AuthScreenState extends State<AuthScreen> {
           msg.contains('too many') ||
           msg.contains('limit');
 
-      if (isNetworkInAuth) {
+      if (isAlreadyExists) {
+        setState(() => _error = t('err_deja_inscrit', _lang));
+      } else if (isNetworkInAuth) {
         // Erreur réseau déguisée en AuthException
         if (!_isSignUp) {
           final canLoginOffline = await _auth.verifyLocalCredentials(phone, pin);
@@ -232,8 +234,6 @@ class _AuthScreenState extends State<AuthScreen> {
         setState(() => _error = _isSignUp
             ? t('err_internet_inscription', _lang)
             : t('err_internet_connexion', _lang));
-      } else if (isAlreadyExists) {
-        setState(() => _error = t('err_deja_inscrit', _lang));
       } else if (isAuthError) {
         setState(() => _error = t('err_mauvais_pin', _lang));
       } else if (isDeviceUsed) {
@@ -247,12 +247,15 @@ class _AuthScreenState extends State<AuthScreen> {
     } catch (e) {
       final errMsg = e.toString().toLowerCase();
 
+      final isAlreadyExists = errMsg.contains('user_already_exists') ||
+          errMsg.contains('already registered') ||
+          errMsg.contains('user already') ||
+          errMsg.contains('already exists') ||
+          errMsg.contains('duplicate key') ||
+          errMsg.contains('unique constraint');
+
       // Détection d'une erreur réseau / hors ligne :
-      // On vérifie d'abord le type exact de l'exception (plus fiable),
-      // puis on complète avec des mots-clés dans le message d'erreur.
-      // Note : 'clientexception' est volontairement exclu car Supabase
-      // l'utilise aussi pour des erreurs non-réseau (ex: validation).
-      final isNetworkError = e is SocketException ||
+      final isNetworkError = !isAlreadyExists && (e is SocketException ||
           e is TimeoutException ||
           errMsg.contains('socketexception') ||
           errMsg.contains('failed host lookup') ||
@@ -262,9 +265,11 @@ class _AuthScreenState extends State<AuthScreen> {
           errMsg.contains('connection refused') ||
           errMsg.contains('network is unreachable') ||
           errMsg.contains('connection timed out') ||
-          errMsg.contains('broken pipe');
+          errMsg.contains('broken pipe'));
 
-      if (isNetworkError && _isSignUp) {
+      if (isAlreadyExists) {
+        setState(() => _error = t('err_deja_inscrit', _lang));
+      } else if (isNetworkError && _isSignUp) {
         // Inscription sans internet
         setState(() => _error = t('err_internet_inscription', _lang));
       } else if (isNetworkError && !_isSignUp) {
@@ -276,7 +281,8 @@ class _AuthScreenState extends State<AuthScreen> {
         }
         setState(() => _error = t('err_internet_connexion', _lang));
       } else {
-        setState(() => _error = t('err_generique', _lang));
+        debugPrint('Auth error: $e');
+        setState(() => _error = '${t('err_generique', _lang)}\n($e)');
       }
 
     } finally {
@@ -287,36 +293,66 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('📖', style: TextStyle(fontSize: 40)),
-                const SizedBox(height: 8),
-                const Text(
-                  'Carnet MoMo',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.ink),
+    return PopScope(
+      canPop: _isSignUp,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !_isSignUp) {
+          setState(() {
+            _isSignUp = true;
+            _error = null;
+          });
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: !_isSignUp
+            ? AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: AppColors.ink),
+                  tooltip: _lang == 'en' ? 'Back to sign up' : "Retour à l'inscription",
+                  onPressed: () {
+                    setState(() {
+                      _isSignUp = true;
+                      _error = null;
+                    });
+                  },
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _isSignUp ? t('cree_ton_compte', _lang) : t('connecte_toi', _lang),
-                  textAlign: TextAlign.center,
+                title: Text(
+                  _lang == 'en' ? 'Back to sign up' : "Créer un compte",
                   style: const TextStyle(fontSize: 14, color: AppColors.inkSoft),
                 ),
-                const SizedBox(height: 18),
+              )
+            : null,
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('📖', style: TextStyle(fontSize: 40)),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Carnet MoMo',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.ink),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _isSignUp ? t('cree_ton_compte', _lang) : t('connecte_toi', _lang),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: AppColors.inkSoft),
+                  ),
+                  const SizedBox(height: 18),
 
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _langChip('fr', 'Français'),
-                    const SizedBox(width: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _langChip('fr', 'Français'),
+                      const SizedBox(width: 8),
                     _langChip('en', 'English'),
                   ],
                 ),
@@ -344,7 +380,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   // Verrouillé en mode connexion si un numéro est déjà enregistré
                   readOnly: !_isSignUp && _registeredPhone != null,
                   decoration: InputDecoration(
-                    hintText: '+229 01 XX XX XX XX',
+                    hintText: (countryById(_selectedCountry)['placeholder'] as String?) ?? '+229 01 XX XX XX XX',
                     suffixIcon: (!_isSignUp && _registeredPhone != null)
                         ? const Tooltip(
                             message: 'Numéro lié à cet appareil',
@@ -399,7 +435,9 @@ class _AuthScreenState extends State<AuthScreen> {
                     TextField(
                       controller: _whatsappCtrl,
                       keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(hintText: '+229 01 XX XX XX XX'),
+                      decoration: InputDecoration(
+                        hintText: (countryById(_selectedCountry)['placeholder'] as String?) ?? '+229 01 XX XX XX XX',
+                      ),
                     ),
                   ],
                   const SizedBox(height: 4),
@@ -438,25 +476,28 @@ class _AuthScreenState extends State<AuthScreen> {
                       ? t('un_instant', _lang)
                       : (_isSignUp ? t('creer_compte', _lang) : t('se_connecter', _lang))),
                 ),
-                if (_registeredPhone == null) ...[
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _isSignUp = !_isSignUp;
-                      _error = null;
-                    }),
-                    child: Text(
-                      _isSignUp ? t('deja_compte', _lang) : t('pas_compte', _lang),
-                      style: const TextStyle(color: AppColors.green),
-                    ),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  icon: Icon(
+                    _isSignUp ? Icons.login : Icons.arrow_back,
+                    size: 16,
+                    color: AppColors.green,
                   ),
-                ],
+                  onPressed: () => setState(() {
+                    _isSignUp = !_isSignUp;
+                    _error = null;
+                  }),
+                  label: Text(
+                    _isSignUp ? t('deja_compte', _lang) : t('pas_compte', _lang),
+                    style: const TextStyle(color: AppColors.green, fontWeight: FontWeight.w600),
+                  ),
+                ),
               ],
             ),
           ),
         ),
       ),
-    );
+    ));
   }
 
   Widget _langChip(String code, String label) {
@@ -482,7 +523,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  Widget _countryChip(Map<String, String> c) {
+  Widget _countryChip(Map<String, dynamic> c) {
     final active = _selectedCountry == c['id'];
     return GestureDetector(
       onTap: () => _selectCountry(c['id']!),

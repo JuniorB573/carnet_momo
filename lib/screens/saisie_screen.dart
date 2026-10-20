@@ -10,6 +10,7 @@ import '../services/sync_service.dart';
 import '../services/translations.dart';
 import '../services/country_controller.dart';
 import '../theme/app_theme.dart';
+import '../theme/countries.dart';
 import '../theme/networks.dart';
 import 'home_shell.dart';
 
@@ -121,8 +122,15 @@ class _SaisieScreenState extends State<SaisieScreen> {
 
   Future<void> _save() async {
     final montant = int.tryParse(_montantCtrl.text);
-    if (_operationNumberCtrl.text.trim().isEmpty) {
-      setState(() => _error = t('indique_numero_op', _lang));
+    final opNumber = _operationNumberCtrl.text.trim();
+
+    final opError = validateOperationNumberForCountry(
+      opNumber,
+      widget.countryController.value,
+      lang: _lang,
+    );
+    if (opError != null) {
+      setState(() => _error = opError);
       return;
     }
     if (montant == null || montant <= 0) {
@@ -211,7 +219,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
                       style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
                   TextField(
                     controller: _operationNumberCtrl,
-                    decoration: InputDecoration(hintText: t('numero_operation', _lang)),
+                    keyboardType: TextInputType.phone,
+                    decoration: InputDecoration(
+                      hintText: (countryById(widget.countryController.value)['placeholder'] as String?) ?? t('numero_operation', _lang),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   Text(t('montant', _lang).toUpperCase(),

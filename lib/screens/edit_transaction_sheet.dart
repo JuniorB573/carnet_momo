@@ -7,6 +7,7 @@ import '../services/formatters.dart';
 import '../services/sync_service.dart';
 import '../services/translations.dart';
 import '../theme/app_theme.dart';
+import '../theme/countries.dart';
 import '../theme/networks.dart';
 
 /// Ouvre un panneau permettant de corriger une opération mal saisie
@@ -75,8 +76,15 @@ class _EditTransactionSheetState extends State<_EditTransactionSheet> {
 
   Future<void> _save() async {
     final montant = int.tryParse(_montantCtrl.text);
-    if (_operationNumberCtrl.text.trim().isEmpty) {
-      setState(() => _error = t('indique_numero_op', _lang));
+    final opNumber = _operationNumberCtrl.text.trim();
+
+    final opError = validateOperationNumberForCountry(
+      opNumber,
+      widget.country,
+      lang: _lang,
+    );
+    if (opError != null) {
+      setState(() => _error = opError);
       return;
     }
     if (montant == null || montant <= 0) {
@@ -213,7 +221,13 @@ class _EditTransactionSheetState extends State<_EditTransactionSheet> {
 
             Text(t('numero_operation', _lang).toUpperCase(),
                 style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
-            TextField(controller: _operationNumberCtrl),
+            TextField(
+              controller: _operationNumberCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                hintText: (countryById(widget.country)['placeholder'] as String?) ?? t('numero_operation', _lang),
+              ),
+            ),
             const SizedBox(height: 14),
 
             Text(t('montant_fcfa', _lang).toUpperCase(), style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
