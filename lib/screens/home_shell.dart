@@ -14,6 +14,7 @@ import 'historique_screen.dart';
 import 'synthese_screen.dart';
 import 'archive_screen.dart';
 import 'reglages_screen.dart';
+import 'abonnement_screen.dart';
 
 /// Réseau mobile money actuellement sélectionné. Partagé entre les écrans
 /// via un simple InheritedNotifier-like pattern (ValueNotifier) pour rester

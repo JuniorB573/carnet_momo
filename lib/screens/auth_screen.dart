@@ -678,11 +678,7 @@ class _AuthScreenState extends State<AuthScreen> {
       ],
     );
   }
-          ),
-        ),
-      ),
-    ));
-  }
+
 
   Widget _langChip(String code, String label) {
     final active = _lang == code;
