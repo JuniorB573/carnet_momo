@@ -15,7 +15,11 @@ import '../theme/app_theme.dart';
 import '../theme/countries.dart';
 import '../theme/networks.dart';
 import '../services/auth_service.dart';
+import '../services/owner_service.dart';
 import 'abonnement_screen.dart';
+import 'owner_dashboard_screen.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 class ReglagesScreen extends StatefulWidget {
   final LanguageController languageController;
@@ -168,6 +172,192 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _ownerSpaceCard() {
+    return Card(
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => OwnerDashboardScreen(
+              languageController: widget.languageController,
+              countryController: widget.countryController,
+            ),
+          ));
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.green.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.storefront, color: AppColors.green, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t('espace_proprietaire', _lang),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      t('espace_proprietaire_desc', _lang),
+                      style: const TextStyle(fontSize: 12, color: AppColors.inkSoft),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 20, color: AppColors.inkMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _agentOwnerCodeCard() {
+    return Card(
+      child: InkWell(
+        onTap: _showOwnerCodeDialog,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.green.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.vpn_key_outlined, color: AppColors.green, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t('code_acces_patron', _lang),
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.ink),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      t('code_patron_desc', _lang),
+                      style: const TextStyle(fontSize: 12, color: AppColors.inkSoft),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 20, color: AppColors.inkMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showOwnerCodeDialog() async {
+    String? code;
+    bool loading = true;
+    final ownerService = OwnerService();
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            if (loading) {
+              ownerService.getOrGenerateOwnerCode().then((c) {
+                if (ctx.mounted) {
+                  setDialogState(() {
+                    code = c;
+                    loading = false;
+                  });
+                }
+              }).catchError((_) {
+                if (ctx.mounted) {
+                  setDialogState(() => loading = false);
+                }
+              });
+            }
+
+            return AlertDialog(
+              title: Row(
+                children: [
+                  const Icon(Icons.vpn_key_outlined, color: AppColors.green),
+                  const SizedBox(width: 8),
+                  Text(t('code_acces_patron', _lang), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    t('code_patron_desc', _lang),
+                    style: const TextStyle(fontSize: 13, color: AppColors.inkSoft),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 18),
+                  if (loading)
+                    const CircularProgressIndicator()
+                  else if (code != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.green.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.green, width: 1.5),
+                      ),
+                      child: Text(
+                        code!,
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 6, color: AppColors.green),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: code!));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(t('code_copie', _lang)), backgroundColor: AppColors.green),
+                            );
+                          },
+                          icon: const Icon(Icons.copy, size: 16),
+                          label: const Text('Copier'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Share.share('${t('code_patron_partage_msg', _lang)} $code');
+                          },
+                          icon: const Icon(Icons.share, size: 16),
+                          label: const Text('Partager'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Fermer'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -396,6 +586,14 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
             style: const TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),
         _changePinCard(),
+
+        const SizedBox(height: 24),
+        Text(t('espace_proprietaire', _lang).toUpperCase(),
+            style: const TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 10),
+        _ownerSpaceCard(),
+        const SizedBox(height: 10),
+        _agentOwnerCodeCard(),
 
         const SizedBox(height: 24),
         Text(t('nous_contacter', _lang).toUpperCase(),

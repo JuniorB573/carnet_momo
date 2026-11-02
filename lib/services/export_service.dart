@@ -390,4 +390,251 @@ class ExportService {
 
     return widgets;
   }
+
+  /// Génère une fiche de rapport luxueuse pour un Kiosque / Agent (vue Propriétaire)
+  /// Sauvegarde automatiquement le fichier PDF dans la mémoire interne (Documents / Téléchargements)
+  /// et ouvre le dialogue de partage (WhatsApp, Email, etc.).
+  Future<File> exportKioskReport({
+    required String kioskName,
+    required String agentPhone,
+    required List<MomoTransaction> transactions,
+    DateTime? fromDate,
+    DateTime? toDate,
+  }) async {
+    final doc = pw.Document();
+    final now = DateTime.now();
+    final cleanKioskName = kioskName.replaceAll(RegExp(r'[^\w\s\-]'), '').trim().replaceAll(' ', '_');
+
+    // Filtre des transactions
+    var txList = transactions.toList();
+    if (fromDate != null) {
+      txList = txList.where((t) => t.date.isAfter(fromDate) || t.date.isAtSameMomentAs(fromDate)).toList();
+    }
+    if (toDate != null) {
+      txList = txList.where((t) => t.date.isBefore(toDate) || t.date.isAtSameMomentAs(toDate)).toList();
+    }
+    txList.sort((a, b) => b.date.compareTo(a.date));
+
+    // Calculs
+    int totalDepots = 0, totalRetraits = 0;
+    int commDepots = 0, commRetraits = 0;
+    int countDepots = 0, countRetraits = 0;
+
+    for (final tx in txList) {
+      if (tx.type == 'depot') {
+        totalDepots += tx.montant;
+        commDepots += tx.commission;
+        countDepots++;
+      } else {
+        totalRetraits += tx.montant;
+        commRetraits += tx.commission;
+        countRetraits++;
+      }
+    }
+
+    final totalMontant = totalDepots + totalRetraits;
+    final totalCommission = commDepots + commRetraits;
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(28),
+        header: (ctx) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('CARNET MOMO · FICHE PROPRIÉTAIRE',
+                        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
+                    pw.SizedBox(height: 2),
+                    pw.Text(kioskName.toUpperCase(),
+                        style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
+                    pw.Text('Agent : $agentPhone',
+                        style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                  ],
+                ),
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.green800,
+                    borderRadius: pw.BorderRadius.circular(6),
+                  ),
+                  child: pw.Text('RAPPORT D’ACTIVITÉ',
+                      style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 6),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Date d’émission : ${DateFormat('dd/MM/yyyy HH:mm').format(now)}',
+                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+                pw.Text('Total : ${txList.length} opérations',
+                    style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+              ],
+            ),
+            pw.Divider(thickness: 1.5, color: PdfColors.green800),
+            pw.SizedBox(height: 10),
+          ],
+        ),
+        build: (ctx) => [
+          // ── Bloc des cartes résumées ──────────────────────────────
+          pw.Row(
+            children: [
+              pw.Expanded(
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.green50,
+                    borderRadius: pw.BorderRadius.circular(6),
+                    border: pw.Border.all(color: PdfColors.green700, width: 0.8),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('TOTAL DÉPÔTS ($countDepots)',
+                          style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
+                      pw.SizedBox(height: 4),
+                      pw.Text(fmtF(totalDepots),
+                          style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
+                      pw.Text('Comm. : ${fmtF(commDepots)}',
+                          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                    ],
+                  ),
+                ),
+              ),
+              pw.SizedBox(width: 8),
+              pw.Expanded(
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.orange50,
+                    borderRadius: pw.BorderRadius.circular(6),
+                    border: pw.Border.all(color: PdfColors.orange700, width: 0.8),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('TOTAL RETRAITS ($countRetraits)',
+                          style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.orange900)),
+                      pw.SizedBox(height: 4),
+                      pw.Text(fmtF(totalRetraits),
+                          style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.orange900)),
+                      pw.Text('Comm. : ${fmtF(commRetraits)}',
+                          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                    ],
+                  ),
+                ),
+              ),
+              pw.SizedBox(width: 8),
+              pw.Expanded(
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey100,
+                    borderRadius: pw.BorderRadius.circular(6),
+                    border: pw.Border.all(color: PdfColors.grey600, width: 0.8),
+                  ),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('COMMISSIONS GÉNÉRÉES',
+                          style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.grey900)),
+                      pw.SizedBox(height: 4),
+                      pw.Text(fmtF(totalCommission),
+                          style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
+                      pw.Text('Volume : ${fmtF(totalMontant)}',
+                          style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+
+          // ── Tableau des opérations ────────────────────────────────
+          pw.Text('JOURNAL DÉTAILLÉ DES TRANSACTIONS',
+              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+          pw.SizedBox(height: 8),
+
+          if (txList.isEmpty)
+            pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(vertical: 20),
+              child: pw.Center(
+                child: pw.Text('Aucune transaction enregistrée pour cette période.',
+                    style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+              ),
+            )
+          else
+            pw.TableHelper.fromTextArray(
+              headers: ['Date & Heure', 'Réseau', 'Type', 'N° Opération', 'Client', 'Montant', 'Commission'],
+              data: txList.map((tx) {
+                final net = kAllNetworks.firstWhere((n) => n['id'] == tx.network, orElse: () => {'label': tx.network});
+                return [
+                  DateFormat('dd/MM HH:mm').format(tx.date),
+                  net['label'] as String,
+                  tx.type == 'depot' ? 'Dépôt' : 'Retrait',
+                  tx.operationNumber,
+                  tx.clientName ?? '—',
+                  fmtF(tx.montant),
+                  fmtF(tx.commission),
+                ];
+              }).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8.5, color: PdfColors.white),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.green900),
+              cellStyle: const pw.TextStyle(fontSize: 8),
+              rowDecoration: const pw.BoxDecoration(color: PdfColors.white),
+              oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
+              cellAlignments: {
+                5: pw.Alignment.centerRight,
+                6: pw.Alignment.centerRight,
+              },
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+              cellPadding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            ),
+        ],
+        footer: (ctx) => pw.Container(
+          padding: const pw.EdgeInsets.only(top: 8),
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(top: pw.BorderSide(color: PdfColors.grey300, width: 0.5)),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text('Fiche certifiée générée par Carnet MoMo · Propriétaire : $kioskName',
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              pw.Text('Page ${ctx.pageNumber} / ${ctx.pagesCount}',
+                  style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Sauvegarde dans la mémoire interne (Documents / App Documents)
+    Directory? storageDir;
+    try {
+      storageDir = await getExternalStorageDirectory();
+    } catch (_) {}
+    storageDir ??= await getApplicationDocumentsDirectory();
+
+    final dateTag = DateFormat('yyyy-MM-dd_HHmm').format(now);
+    final fileName = 'Fiche_${cleanKioskName}_$dateTag.pdf';
+    final savedFile = File('${storageDir.path}/$fileName');
+    await savedFile.writeAsBytes(await doc.save());
+
+    // Partager via WhatsApp / Email / etc.
+    await Share.shareXFiles(
+      [XFile(savedFile.path)],
+      subject: 'Fiche MoMo — $kioskName',
+    );
+
+    return savedFile;
+  }
 }
