@@ -166,10 +166,19 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     ];
 
     // L'onglet Réglages (index 4) reste toujours accessible, même quand
-    // l'abonnement est expiré — c'est là que vit maintenant la gestion de
+    // l'abonnement est expiré — c'est là que vit la gestion de
     // l'abonnement (voir ReglagesScreen._abonnementCard).
     final currentTab = (isExpired && _tabIndex != 4)
-        ? _ExpiredGate(onSeeAbonnement: () => setState(() => _tabIndex = 4), lang: lang)
+        ? _ExpiredGate(
+            status: _status!,
+            onStatusChanged: () async {
+              await _loadStatus();
+              if (_status?.state == SubscriptionState.actif && mounted) {
+                setState(() => _tabIndex = 0); // Retour à la saisie dès que l'abonnement est actif
+              }
+            },
+            languageController: widget.languageController,
+          )
         : tabs[_tabIndex];
 
     return Scaffold(
@@ -200,12 +209,19 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 }
 
 class _ExpiredGate extends StatelessWidget {
-  final VoidCallback onSeeAbonnement;
-  final String lang;
-  const _ExpiredGate({required this.onSeeAbonnement, required this.lang});
+  final SubscriptionStatus status;
+  final VoidCallback onStatusChanged;
+  final LanguageController languageController;
+
+  const _ExpiredGate({
+    required this.status,
+    required this.onStatusChanged,
+    required this.languageController,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final lang = languageController.value;
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Center(
@@ -229,7 +245,16 @@ class _ExpiredGate extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 ElevatedButton(
-                  onPressed: onSeeAbonnement,
+                  onPressed: () async {
+                    await Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => AbonnementScreen(
+                        status: status,
+                        onStatusChanged: onStatusChanged,
+                        languageController: languageController,
+                      ),
+                    ));
+                    onStatusChanged();
+                  },
                   child: Text("${t('voir_abonnement', lang)}${SubscriptionService.monthlyFeeFcfa} F CFA / mois"),
                 ),
               ],

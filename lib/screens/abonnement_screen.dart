@@ -32,12 +32,14 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
   String? _error;
   bool _loading = false;
   Timer? _pollTimer;
+  late SubscriptionStatus _currentStatus;
 
   String get _lang => widget.languageController.value;
 
   @override
   void initState() {
     super.initState();
+    _currentStatus = widget.status;
     widget.languageController.addListener(_onLanguageChanged);
   }
 
@@ -53,9 +55,9 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
   void _startPaymentPolling() {
     _pollTimer?.cancel();
     int count = 0;
-    _pollTimer = Timer.periodic(const Duration(seconds: 4), (timer) async {
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       count++;
-      if (count > 20 || !mounted) {
+      if (count > 40 || !mounted) {
         timer.cancel();
         return;
       }
@@ -63,6 +65,7 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
       if (!mounted) return;
       if (s.state == SubscriptionState.actif) {
         timer.cancel();
+        setState(() => _currentStatus = s);
         widget.onStatusChanged();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -71,6 +74,14 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
+        // Si cet écran a été ouvert en modal/page, on retourne automatiquement aux écrans normaux
+        if (Navigator.of(context).canPop()) {
+          Future.delayed(const Duration(milliseconds: 1500), () {
+            if (mounted && Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          });
+        }
       }
     });
   }
@@ -85,9 +96,6 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
       final uri = Uri.parse(url);
       final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!opened) throw Exception('launch_failed');
-      // L'écran repassera automatiquement en "actif" dès que le webhook
-      // SasPay aura mis à jour le statut côté serveur ; l'agent peut
-      // revenir sur cet écran pour voir la mise à jour.
       widget.onStatusChanged();
       _startPaymentPolling();
     } catch (_) {
@@ -100,15 +108,31 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final s = widget.status;
-    return ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        Text(t('abonnement', _lang),
-            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: AppColors.ink)),
-        const SizedBox(height: 14),
-        _statusCard(s),
-        const SizedBox(height: 20),
+    final s = _currentStatus;
+    final canGoBack = Navigator.of(context).canPop();
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: canGoBack
+          ? AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: AppColors.ink),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              title: Text(t('abonnement', _lang), style: const TextStyle(color: AppColors.ink, fontSize: 18, fontWeight: FontWeight.bold)),
+            )
+          : null,
+      body: ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          if (!canGoBack) ...[
+            Text(t('abonnement', _lang),
+                style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: AppColors.ink)),
+            const SizedBox(height: 14),
+          ],
+          _statusCard(s),
+          const SizedBox(height: 20),
 
         Card(
           child: Padding(
@@ -165,6 +189,7 @@ class _AbonnementScreenState extends State<AbonnementScreen> {
 
 
       ],
+      ),
     );
   }
 
