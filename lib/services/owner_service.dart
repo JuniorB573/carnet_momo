@@ -154,19 +154,39 @@ class OwnerService {
   // -------------------------------------------------------------
 
   Future<List<MomoTransaction>> fetchKioskTransactions(String agentId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cacheKey = 'kiosk_txs_cache_$agentId';
     try {
       final rows = await _client
           .from('transactions')
           .select()
           .eq('agent_id', agentId)
-          .order('date', ascending: false);
+          .order('date', ascending: false)
+          .timeout(const Duration(seconds: 6));
 
-      return (rows as List<dynamic>)
+      final txs = (rows as List<dynamic>)
           .map((r) => MomoTransaction.fromMap(r as Map<String, dynamic>))
           .toList();
+
+      // Mettre en cache local pour consultation hors ligne
+      final encoded = jsonEncode(txs.map((t) => t.toMap()).toList());
+      await prefs.setString(cacheKey, encoded);
+
+      return txs;
     } catch (e) {
-      debugPrint('[OwnerService] Erreur fetch transactions: $e');
+      debugPrint('[OwnerService] Mode hors ligne ou erreur fetch transactions: $e');
+      // Hors ligne : charger les transactions depuis le cache local
+      final raw = prefs.getString(cacheKey);
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          final list = jsonDecode(raw) as List<dynamic>;
+          return list
+              .map((r) => MomoTransaction.fromMap(r as Map<String, dynamic>))
+              .toList();
+        } catch (_) {}
+      }
       return [];
     }
   }
 }
+

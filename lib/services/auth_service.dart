@@ -190,6 +190,35 @@ class AuthService {
     }
   }
 
+  /// Réinitialise le code PIN suite à la validation d'un code OTP SMS
+  Future<void> resetPinWithOtp({
+    required String phone,
+    required String otp,
+    required String newPin,
+  }) async {
+    final cleanPhone = '+${_normalizePhone(phone)}';
+    try {
+      await _client.auth.verifyOTP(
+        phone: cleanPhone,
+        token: otp.trim(),
+        type: OtpType.sms,
+      );
+    } catch (e) {
+      debugPrint('[AuthService] verifyOTP error in resetPinWithOtp: $e');
+      rethrow;
+    }
+
+    // Mettre à jour le mot de passe sur Supabase
+    await _client.auth.updateUser(
+      UserAttributes(password: _padPin(newPin)),
+    );
+
+    // Mettre à jour les données locales pour permettre la connexion hors ligne
+    await _storeLocalPin(newPin);
+    await _storeLocalPhone(phone);
+  }
+
+
   /// Connexion : essaie d'abord Supabase (en ligne), bascule en local si hors ligne.
   Future<AuthResponse> signIn(String phone, String pin) async {
     try {
