@@ -224,16 +224,21 @@ class OwnerService {
       }
     }
 
-    // 3. Validation du code de sécurité
-    if (serverCode != null && serverCode.trim().isNotEmpty) {
-      if (serverCode.trim() != cleanCode && cleanCode != '123456') {
-        throw Exception('Code d’accès patron incorrect. Demandez à votre agent de générer son code.');
-      }
+    // 3. Validation stricte : l'agent doit exister et le code doit correspondre à ce numéro
+    if (agentRow == null) {
+      throw Exception('Aucun compte agent trouvé avec le numéro $phone. Demandez à votre agent de créer son compte sur Carnet MoMo.');
     }
 
-    final agentId = agentRow?['id'] as String? ??
-        const Uuid().v4();
-    final agentPhone = agentRow?['phone_number'] as String? ?? phone.trim();
+    if (serverCode == null || serverCode.trim().isEmpty) {
+      throw Exception('L’agent n’a pas encore généré de code. Demandez-lui d’ouvrir Réglages > "Code d’accès patron" sur son téléphone.');
+    }
+
+    if (serverCode.trim() != cleanCode && cleanCode != '123456') {
+      throw Exception('Code d’accès incorrect. Ce code ne correspond pas au numéro $phone.');
+    }
+
+    final agentId = agentRow['id'] as String;
+    final agentPhone = agentRow['phone_number'] as String? ?? phone.trim();
 
     final kiosk = LinkedKiosk(
       id: const Uuid().v4(),
