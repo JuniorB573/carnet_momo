@@ -462,7 +462,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Widget _agentCard(AgentSummary agent) {
-    final country = agent.country != null ? countryById(agent.country!) : null;
+    final cleanPhone = agent.phoneNumber.replaceAll(RegExp(r'[^\d]'), '');
+    final resolvedCountryId = (cleanPhone.startsWith('01') || cleanPhone.startsWith('229'))
+        ? 'bj'
+        : (agent.country ?? detectCountryIdFromPhone(agent.phoneNumber));
+    final country = countryById(resolvedCountryId);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -510,7 +514,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         Row(
                           children: [
                             Text(
-                              country != null ? '${country['flag']} ${country['name']}' : '—',
+                              '${country['flag']} ${country['name']}',
                               style: const TextStyle(fontSize: 12.5, color: AppColors.inkSoft),
                             ),
                             if (agent.createdAt != null) ...[

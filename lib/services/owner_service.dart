@@ -103,6 +103,32 @@ class OwnerService {
     return code;
   }
 
+  /// Force la régénération d'un NOUVEAU code à 6 chiffres (remplace et invalide l'ancien)
+  Future<String> regenerateOwnerCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final user = _client.auth.currentUser;
+
+    final newCode = (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
+    await prefs.setString('local_owner_code', newCode);
+
+    if (user != null) {
+      try {
+        await _client
+            .from('agents')
+            .update({'owner_code': newCode})
+            .eq('id', user.id);
+      } catch (e) {
+        debugPrint('[OwnerService] Erreur maj nouveau code dans agents: $e');
+      }
+
+      try {
+        await _client.auth.updateUser(UserAttributes(data: {'owner_code': newCode}));
+      } catch (_) {}
+    }
+
+    return newCode;
+  }
+
   // -------------------------------------------------------------
   // 2. Côté Patron : Liaison des kiosques
   // -------------------------------------------------------------

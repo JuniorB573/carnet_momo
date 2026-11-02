@@ -346,6 +346,34 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: () async {
+                        setDialogState(() => loading = true);
+                        try {
+                          final freshCode = await ownerService.regenerateOwnerCode();
+                          if (ctx.mounted) {
+                            setDialogState(() {
+                              code = freshCode;
+                              loading = false;
+                            });
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              const SnackBar(content: Text('Nouveau code généré avec succès !'), backgroundColor: AppColors.green),
+                            );
+                          }
+                        } catch (_) {
+                          if (ctx.mounted) setDialogState(() => loading = false);
+                        }
+                      },
+                      icon: const Icon(Icons.refresh, size: 16, color: AppColors.inkMuted),
+                      label: const Text('Régénérer un nouveau code', style: TextStyle(fontSize: 12, color: AppColors.inkMuted)),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Ce code reste le même à chaque ouverture. Il ne change que si vous appuyez sur "Régénérer".',
+                      style: TextStyle(fontSize: 11, color: AppColors.inkMuted),
+                      textAlign: TextAlign.center,
+                    ),
                   ],
                 ],
               ),

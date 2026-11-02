@@ -196,7 +196,11 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final country = _agent.country != null ? countryById(_agent.country!) : null;
+    final cleanPhone = _agent.phoneNumber.replaceAll(RegExp(r'[^\d]'), '');
+    final resolvedCountryId = (cleanPhone.startsWith('01') || cleanPhone.startsWith('229'))
+        ? 'bj'
+        : (_agent.country ?? detectCountryIdFromPhone(_agent.phoneNumber));
+    final country = countryById(resolvedCountryId);
     final now = DateTime.now();
     final thisMonth = _txs.where((tx) => tx.date.toLocal().year == now.year && tx.date.toLocal().month == now.month).toList();
 
@@ -234,7 +238,7 @@ class _AgentDetailScreenState extends State<AgentDetailScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    country != null ? '${country['flag']} ${country['name']}' : '—',
+                    '${country['flag']} ${country['name']}',
                     style: const TextStyle(fontSize: 14, color: AppColors.inkSoft),
                   ),
                   const SizedBox(height: 14),

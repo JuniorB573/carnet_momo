@@ -194,13 +194,19 @@ class AdminDashboardService {
         createdAt = DateTime.tryParse(row['created_at'].toString())?.toLocal();
       }
       final rawPhone = row['phone_number'] as String? ?? '—';
+      final cleanDigits = rawPhone.replaceAll(RegExp(r'[^\d]'), '');
       var country = row['country'] as String?;
-      final detected = detectCountryIdFromPhone(rawPhone, fallback: country ?? 'bj');
-      // Corriger les numéros du Bénin (ex: 014733535...) enregistrés sous 'tg' par erreur
-      if (country == null || country.isEmpty || (country == 'tg' && (rawPhone.startsWith('01') || rawPhone.startsWith('229') || rawPhone.startsWith('+229')))) {
-        country = detected;
-        // Correction silencieuse dans Supabase pour que la base de données soit propre
-        _client.from('agents').update({'country': detected}).eq('id', id).then((_) {}).catchError((_) {});
+      final isBeninPhone = cleanDigits.startsWith('01') || cleanDigits.startsWith('229');
+      final detected = isBeninPhone ? 'bj' : detectCountryIdFromPhone(rawPhone, fallback: country ?? 'bj');
+
+      // Tout numéro commençant par 01 ou 229 est garanti d'être au Bénin (ex: 0147335356)
+      if (isBeninPhone || country == null || country.isEmpty || country == 'tg') {
+        if (isBeninPhone) {
+          country = 'bj';
+          _client.from('agents').update({'country': 'bj'}).eq('id', id).then((_) {}).catchError((_) {});
+        } else {
+          country = detected;
+        }
       }
 
       return AgentSummary(
