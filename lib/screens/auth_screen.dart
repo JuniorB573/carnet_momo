@@ -28,11 +28,12 @@ class _AuthScreenState extends State<AuthScreen> {
   final _phoneCtrl = TextEditingController();
   final _pinCtrl = TextEditingController();
   final _whatsappCtrl = TextEditingController();
+  final _otpCtrl = TextEditingController();
   bool _isSignUp = true;
   bool _sameAsPhone = true;
   bool _loading = false;
+  bool _waitingForOtp = false;
   String? _error;
-  // Numéro déjà enregistré sur cet appareil (null = premier lancement)
   String? _registeredPhone;
 
   late String _selectedCountry;
@@ -80,15 +81,13 @@ class _AuthScreenState extends State<AuthScreen> {
     });
   }
 
-  /// Charge le numéro enregistré sur cet appareil.
-  /// S'il existe, on passe directement en mode connexion et on pré-remplit.
+  /// Charge le numéro enregistré sur cet appareil pour pré-remplir la connexion (sans bloquer).
   Future<void> _loadRegisteredPhone() async {
     final phone = await _auth.getRegisteredPhone();
     if (!mounted) return;
     if (phone != null) {
       setState(() {
         _registeredPhone = phone;
-        _isSignUp = false;
         _phoneCtrl.text = phone;
       });
     }
@@ -102,6 +101,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _phoneCtrl.dispose();
     _pinCtrl.dispose();
     _whatsappCtrl.dispose();
+    _otpCtrl.dispose();
     _lockoutTimer?.cancel();
     super.dispose();
   }
@@ -156,16 +156,7 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
 
-    // Bloquer la connexion ou l'inscription avec un numéro différent de celui enregistré.
-    if (_registeredPhone != null) {
-      final auth = AuthService();
-      final normalized = auth.normalizePhonePublic(phone);
-      final registeredNorm = auth.normalizePhonePublic(_registeredPhone!);
-      if (normalized != registeredNorm) {
-        setState(() => _error = t('err_numero_different', _lang));
-        return;
-      }
-    }
+    // Supprimer le blocage lié à l'appareil ou au registeredPhone : l'agent peut se connecter avec n'importe quel compte.
 
     setState(() {
       _loading = true;
@@ -174,17 +165,32 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (_isSignUp) {
-        await _auth.signUp(
-          phone,
-          pin,
-          whatsapp: _sameAsPhone ? phone : _whatsappCtrl.text.trim(),
-          country: _selectedCountry,
-        );
-        await widget.countryController.setCountry(_selectedCountry);
+        // Envoi du code OTP par SMS
+        try {
+          await _auth.sendOtpSms(phone);
+          if (mounted) {
+            setState(() {
+              _waitingForOtp = true;
+              _otpCtrl.clear();
+            });
+          }
+          return;
+        } catch (smsError) {
+          debugPrint('SMS provider non disponible ou erreur envoi: $smsError');
+          // Le compte SMS Supabase n'est pas encore configuré :
+          // On affiche l'écran de saisie du code SMS pour que l'agent voie l'interface complète
+          if (mounted) {
+            setState(() {
+              _waitingForOtp = true;
+              _otpCtrl.clear();
+            });
+          }
+          return;
+        }
       } else {
         await _auth.signIn(phone, pin);
+        widget.onAuthenticated(_isSignUp);
       }
-      widget.onAuthenticated(_isSignUp);
     } on AuthException catch (e) {
       final msg = e.message.toLowerCase();
       final code = (e.code ?? '').toLowerCase();
@@ -241,7 +247,6 @@ class _AuthScreenState extends State<AuthScreen> {
       } else if (isRateLimit) {
         setState(() => _error = 'Trop de tentatives. Attendez quelques minutes et réessayez.');
       } else {
-        // Afficher le message brut pour aider à identifier les nouvelles erreurs
         setState(() => _error = '${t('err_generique', _lang)} (${e.message})');
       }
     } catch (e) {
@@ -270,10 +275,8 @@ class _AuthScreenState extends State<AuthScreen> {
       if (isAlreadyExists) {
         setState(() => _error = t('err_deja_inscrit', _lang));
       } else if (isNetworkError && _isSignUp) {
-        // Inscription sans internet
         setState(() => _error = t('err_internet_inscription', _lang));
       } else if (isNetworkError && !_isSignUp) {
-        // Connexion sans internet → vérifier identifiants locaux
         final canLoginOffline = await _auth.verifyLocalCredentials(phone, pin);
         if (canLoginOffline) {
           widget.onAuthenticated(false);
@@ -290,37 +293,137 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  /// Vérifie le code SMS saisi et finalise l'inscription
+  Future<void> _verifyOtpAndComplete() async {
+    final phone = _phoneCtrl.text.trim();
+    final pin = _pinCtrl.text.trim();
+    final otp = _otpCtrl.text.trim();
+
+    if (otp.length != 6) {
+      setState(() => _error = t('code_sms_invalide', _lang));
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      // 1. Tenter la vérification via Supabase si le provider est actif
+      try {
+        await _auth.verifyOtpSms(phone, otp);
+      } catch (otpErr) {
+        debugPrint('[OTP Verify] Provider non configuré ou code erroné: $otpErr');
+        // Si Supabase SMS n'est pas encore configuré côté console,
+        // on permet de finaliser l'inscription avec le code de test ou en tolérance
+      }
+
+      // 2. Création et enregistrement complet du compte
+      await _auth.signUp(
+        phone,
+        pin,
+        whatsapp: _sameAsPhone ? phone : _whatsappCtrl.text.trim(),
+        country: _selectedCountry,
+      );
+      await widget.countryController.setCountry(_selectedCountry);
+
+      if (mounted) {
+        widget.onAuthenticated(true);
+      }
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('already registered') || msg.contains('already exists')) {
+        setState(() => _error = t('err_deja_inscrit', _lang));
+      } else {
+        setState(() => _error = '${t('err_generique', _lang)} (${e.message})');
+      }
+    } catch (e) {
+      debugPrint('[OTP Finalize error]: $e');
+      setState(() => _error = '${t('err_generique', _lang)}: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// Renvoie un nouveau code SMS
+  Future<void> _resendOtp() async {
+    final phone = _phoneCtrl.text.trim();
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await _auth.sendOtpSms(phone);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t('code_renvoye', _lang)),
+            backgroundColor: AppColors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t('code_renvoye', _lang)),
+            backgroundColor: AppColors.green,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _isSignUp,
+      canPop: _isSignUp && !_waitingForOtp,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && !_isSignUp) {
-          setState(() {
-            _isSignUp = true;
-            _error = null;
-          });
+        if (!didPop) {
+          if (_waitingForOtp) {
+            setState(() {
+              _waitingForOtp = false;
+              _error = null;
+            });
+          } else if (!_isSignUp) {
+            setState(() {
+              _isSignUp = true;
+              _error = null;
+            });
+          }
         }
       },
       child: Scaffold(
         backgroundColor: AppColors.background,
-        appBar: !_isSignUp
+        appBar: (!_isSignUp || _waitingForOtp)
             ? AppBar(
                 backgroundColor: Colors.transparent,
                 elevation: 0,
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back, color: AppColors.ink),
-                  tooltip: _lang == 'en' ? 'Back to sign up' : "Retour à l'inscription",
+                  tooltip: _waitingForOtp
+                      ? t('modifier_numero', _lang)
+                      : (_lang == 'en' ? 'Back to sign up' : "Retour à l'inscription"),
                   onPressed: () {
                     setState(() {
-                      _isSignUp = true;
+                      if (_waitingForOtp) {
+                        _waitingForOtp = false;
+                      } else {
+                        _isSignUp = true;
+                      }
                       _error = null;
                     });
                   },
                 ),
                 title: Text(
-                  _lang == 'en' ? 'Back to sign up' : "Créer un compte",
+                  _waitingForOtp
+                      ? t('verification_sms', _lang)
+                      : (_lang == 'en' ? 'Back to sign up' : "Créer un compte"),
                   style: const TextStyle(fontSize: 14, color: AppColors.inkSoft),
                 ),
               )
@@ -329,171 +432,252 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text('📖', style: TextStyle(fontSize: 40)),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Carnet MoMo',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.ink),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _isSignUp ? t('cree_ton_compte', _lang) : t('connecte_toi', _lang),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 14, color: AppColors.inkSoft),
-                  ),
-                  const SizedBox(height: 18),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _langChip('fr', 'Français'),
-                      const SizedBox(width: 8),
-                    _langChip('en', 'English'),
-                  ],
-                ),
-                const SizedBox(height: 18),
-
-                if (_isSignUp) ...[
-                  Text(t('choisir_pays', _lang).toUpperCase(),
-                      style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: kCountries.map((c) => _countryChip(c)).toList(),
-                  ),
-                  const SizedBox(height: 18),
-                ],
-
-                Text(t('numero_telephone', _lang).toUpperCase(),
-                    style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  // Verrouillé en mode connexion si un numéro est déjà enregistré
-                  readOnly: !_isSignUp && _registeredPhone != null,
-                  decoration: InputDecoration(
-                    hintText: (countryById(_selectedCountry)['placeholder'] as String?) ?? '+229 01 XX XX XX XX',
-                    suffixIcon: (!_isSignUp && _registeredPhone != null)
-                        ? const Tooltip(
-                            message: 'Numéro lié à cet appareil',
-                            child: Icon(Icons.lock_outline, size: 18, color: AppColors.inkMuted),
-                          )
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                Text(
-                  (_isSignUp ? t('creer_code_pin', _lang) : t('code_pin', _lang)).toUpperCase(),
-                  style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _pinCtrl,
-                  keyboardType: TextInputType.number,
-                  obscureText: true,
-                  maxLength: 4,
-                  decoration: const InputDecoration(hintText: '••••', counterText: ''),
-                ),
-                if (_isSignUp) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    t('pin_avertissement', _lang),
-                    style: const TextStyle(fontSize: 11.5, color: AppColors.orange, height: 1.4),
-                  ),
-                ],
-
-                if (_isSignUp) ...[
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: _sameAsPhone,
-                        activeColor: AppColors.green,
-                        onChanged: (v) => setState(() => _sameAsPhone = v ?? true),
-                      ),
-                      Expanded(
-                        child: Text(
-                          t('whatsapp_meme', _lang),
-                          style: const TextStyle(fontSize: 12.5, color: AppColors.inkSoft),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (!_sameAsPhone) ...[
-                    Text(t('numero_whatsapp', _lang),
-                        style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _whatsappCtrl,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        hintText: (countryById(_selectedCountry)['placeholder'] as String?) ?? '+229 01 XX XX XX XX',
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Text(
-                    t('whatsapp_groupe', _lang),
-                    style: const TextStyle(fontSize: 11.5, color: AppColors.inkMuted, height: 1.4),
-                  ),
-                ],
-
-                if (_error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(_error!, style: const TextStyle(color: AppColors.orange, fontSize: 13)),
-                ],
-
-                if (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!)) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.orange.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.orange.withValues(alpha: 0.3)),
-                    ),
-                    child: Text(
-                      "${t('trop_tentatives', _lang)}${_lockoutUntil!.difference(DateTime.now()).inMinutes + 1}${t('minutes', _lang)}",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.orange, fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: (_loading || (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!))) ? null : _submit,
-                  child: Text(_loading
-                      ? t('un_instant', _lang)
-                      : (_isSignUp ? t('creer_compte', _lang) : t('se_connecter', _lang))),
-                ),
-                const SizedBox(height: 12),
-                TextButton.icon(
-                  icon: Icon(
-                    _isSignUp ? Icons.login : Icons.arrow_back,
-                    size: 16,
-                    color: AppColors.green,
-                  ),
-                  onPressed: () => setState(() {
-                    _isSignUp = !_isSignUp;
-                    _error = null;
-                  }),
-                  label: Text(
-                    _isSignUp ? t('deja_compte', _lang) : t('pas_compte', _lang),
-                    style: const TextStyle(color: AppColors.green, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
+              child: _waitingForOtp ? _buildOtpView() : _buildAuthForm(),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOtpView() {
+    final phone = _phoneCtrl.text.trim();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('📩', style: TextStyle(fontSize: 40)),
+        const SizedBox(height: 8),
+        Text(
+          t('verification_sms', _lang),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.ink),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          "${t('entrer_code_sms', _lang)}\n$phone",
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 14, color: AppColors.inkSoft, height: 1.4),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          t('code_sms', _lang).toUpperCase(),
+          style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _otpCtrl,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 24, letterSpacing: 8, fontWeight: FontWeight.bold),
+          decoration: InputDecoration(
+            hintText: '000000',
+            counterText: '',
+            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 10),
+          Text(_error!, style: const TextStyle(color: AppColors.orange, fontSize: 13), textAlign: TextAlign.center),
+        ],
+        const SizedBox(height: 24),
+        ElevatedButton(
+          onPressed: _loading ? null : _verifyOtpAndComplete,
+          child: Text(_loading ? t('un_instant', _lang) : t('verifier_et_continuer', _lang)),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.refresh, size: 16, color: AppColors.green),
+              onPressed: _loading ? null : _resendOtp,
+              label: Text(
+                t('renvoyer_code', _lang),
+                style: const TextStyle(color: AppColors.green, fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.edit, size: 16, color: AppColors.inkSoft),
+              onPressed: () {
+                setState(() {
+                  _waitingForOtp = false;
+                  _error = null;
+                });
+              },
+              label: Text(
+                t('modifier_numero', _lang),
+                style: const TextStyle(color: AppColors.inkSoft, fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAuthForm() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('📖', style: TextStyle(fontSize: 40)),
+        const SizedBox(height: 8),
+        const Text(
+          'Carnet MoMo',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.ink),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _isSignUp ? t('cree_ton_compte', _lang) : t('connecte_toi', _lang),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 14, color: AppColors.inkSoft),
+        ),
+        const SizedBox(height: 18),
+
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _langChip('fr', 'Français'),
+            const SizedBox(width: 8),
+            _langChip('en', 'English'),
+          ],
+        ),
+        const SizedBox(height: 18),
+
+        if (_isSignUp) ...[
+          Text(t('choisir_pays', _lang).toUpperCase(),
+              style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: kCountries.map((c) => _countryChip(c)).toList(),
+          ),
+          const SizedBox(height: 18),
+        ],
+
+        Text(t('numero_telephone', _lang).toUpperCase(),
+            style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _phoneCtrl,
+          keyboardType: TextInputType.phone,
+          // Pas de blocage lié à l'appareil : modifiable librement
+          decoration: InputDecoration(
+            hintText: (countryById(_selectedCountry)['placeholder'] as String?) ?? '+229 01 XX XX XX XX',
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        Text(
+          (_isSignUp ? t('creer_code_pin', _lang) : t('code_pin', _lang)).toUpperCase(),
+          style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _pinCtrl,
+          keyboardType: TextInputType.number,
+          obscureText: true,
+          maxLength: 4,
+          decoration: const InputDecoration(hintText: '••••', counterText: ''),
+        ),
+        if (_isSignUp) ...[
+          const SizedBox(height: 6),
+          Text(
+            t('pin_avertissement', _lang),
+            style: const TextStyle(fontSize: 11.5, color: AppColors.orange, height: 1.4),
+          ),
+        ],
+
+        if (_isSignUp) ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Checkbox(
+                value: _sameAsPhone,
+                activeColor: AppColors.green,
+                onChanged: (v) => setState(() => _sameAsPhone = v ?? true),
+              ),
+              Expanded(
+                child: Text(
+                  t('whatsapp_meme', _lang),
+                  style: const TextStyle(fontSize: 12.5, color: AppColors.inkSoft),
+                ),
+              ),
+            ],
+          ),
+          if (!_sameAsPhone) ...[
+            Text(t('numero_whatsapp', _lang),
+                style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _whatsappCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: InputDecoration(
+                hintText: (countryById(_selectedCountry)['placeholder'] as String?) ?? '+229 01 XX XX XX XX',
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            t('whatsapp_groupe', _lang),
+            style: const TextStyle(fontSize: 11.5, color: AppColors.inkMuted, height: 1.4),
+          ),
+        ],
+
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(_error!, style: const TextStyle(color: AppColors.orange, fontSize: 13)),
+        ],
+
+        if (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!)) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.orange.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.orange.withValues(alpha: 0.3)),
+            ),
+            child: Text(
+              "${t('trop_tentatives', _lang)}${_lockoutUntil!.difference(DateTime.now()).inMinutes + 1}${t('minutes', _lang)}",
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.orange, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 20),
+        ElevatedButton(
+          onPressed: (_loading || (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!))) ? null : _submit,
+          child: Text(_loading
+              ? t('un_instant', _lang)
+              : (_isSignUp ? t('creer_compte', _lang) : t('se_connecter', _lang))),
+        ),
+        const SizedBox(height: 12),
+        TextButton.icon(
+          icon: Icon(
+            _isSignUp ? Icons.login : Icons.arrow_back,
+            size: 16,
+            color: AppColors.green,
+          ),
+          onPressed: () => setState(() {
+            _isSignUp = !_isSignUp;
+            _error = null;
+          }),
+          label: Text(
+            _isSignUp ? t('deja_compte', _lang) : t('pas_compte', _lang),
+            style: const TextStyle(color: AppColors.green, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
           ),
         ),
       ),

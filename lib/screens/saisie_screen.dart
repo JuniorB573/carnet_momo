@@ -52,15 +52,19 @@ class _SaisieScreenState extends State<SaisieScreen> {
     super.initState();
     widget.networkController.addListener(_onNetworkChanged);
     widget.languageController.addListener(_onLanguageChanged);
+    widget.countryController.addListener(_onCountryChanged);
     _refreshTodaySummary();
   }
 
   void _onLanguageChanged() => setState(() {});
 
+  void _onCountryChanged() => setState(() {});
+
   @override
   void dispose() {
     widget.networkController.removeListener(_onNetworkChanged);
     widget.languageController.removeListener(_onLanguageChanged);
+    widget.countryController.removeListener(_onCountryChanged);
     _operationNumberCtrl.dispose();
     _montantCtrl.dispose();
     super.dispose();

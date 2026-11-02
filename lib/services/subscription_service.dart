@@ -141,17 +141,25 @@ class SubscriptionService {
           await prefs.setString('paid_until', serverPaidUntil);
         }
       } else {
-        // Si la requête réussit mais qu'aucune ligne n'est trouvée, cela
-        // signifie que l'agent a été supprimé de la base de données.
-        // On force la déconnexion immédiate.
-        await _client.auth.signOut();
+        // Si aucune ligne n'existe encore pour cet agent (ex: compte créé mais ligne non initialisée),
+        // on l'initialise immédiatement avec son essai gratuit au lieu de le déconnecter.
+        final nowIso = DateTime.now().toUtc().toIso8601String();
+        try {
+          await _client.from('subscriptions').insert({
+            'agent_id': user.id,
+            'trial_start': nowIso,
+          });
+          await prefs.setString('trial_start', nowIso);
+        } catch (_) {
+          // Si l'insertion échoue, on continue en mode essai local
+          await prefs.setString('trial_start', nowIso);
+        }
       }
     } on AuthException catch (_) {
-      // Jeton invalide ou expiré suite à une suppression de compte
+      // Jeton invalide ou session corrompue
       await _client.auth.signOut();
     } catch (e) {
-      // Pas de connexion ou serveur injoignable : on continue avec la
-      // dernière valeur locale connue, sans bloquer l'agent.
+      // Pas de connexion ou timeout : on continue avec la valeur locale
     }
   }
 }

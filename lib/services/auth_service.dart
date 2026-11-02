@@ -132,25 +132,6 @@ class AuthService {
         ? _normalizePhone(whatsapp)
         : normalized; // Même numéro par défaut si non précisé.
 
-    // 1. Vérifier si ce téléphone est déjà utilisé pour un autre compte
-    final deviceId = await _getDeviceId();
-    if (deviceId != null) {
-      try {
-        final existingDevice = await _client
-            .from('agents')
-            .select('id')
-            .eq('device_id', deviceId)
-            .maybeSingle();
-            
-        if (existingDevice != null) {
-          throw const AuthException('DEVICE_ALREADY_USED');
-        }
-      } catch (e) {
-        if (e is AuthException) rethrow;
-        // Erreur réseau : on laisse passer, la contrainte UNIQUE Supabase bloquera au besoin
-      }
-    }
-
     final response = await _client.auth.signUp(
       email: _toInternalEmail(phone),
       password: _padPin(pin),
@@ -158,6 +139,7 @@ class AuthService {
 
     final user = response.user;
     if (user != null) {
+      final deviceId = await _getDeviceId();
       await _client.from('agents').insert({
         'id': user.id,
         'phone_number': normalized,
@@ -175,6 +157,37 @@ class AuthService {
     await _storeLocalPhone(phone);
     await _storeLocalRole('agent'); // Nouveau compte = agent par défaut
     return response;
+  }
+
+  /// Envoie un code OTP par SMS via Supabase (quand un provider SMS est actif)
+  Future<void> sendOtpSms(String phone) async {
+    final cleanPhone = '+${_normalizePhone(phone)}';
+    try {
+      await _client.auth.signInWithOtp(
+        phone: cleanPhone,
+      );
+    } catch (e) {
+      // Si le provider SMS n'est pas encore configuré côté Supabase,
+      // on attrape l'erreur pour permettre le mode de test de l'interface
+      debugPrint('[AuthService] sendOtpSms: $e');
+      rethrow;
+    }
+  }
+
+  /// Vérifie le code OTP à 6 chiffres
+  Future<bool> verifyOtpSms(String phone, String otpToken) async {
+    final cleanPhone = '+${_normalizePhone(phone)}';
+    try {
+      final res = await _client.auth.verifyOTP(
+        phone: cleanPhone,
+        token: otpToken.trim(),
+        type: OtpType.sms,
+      );
+      return res.session != null || res.user != null;
+    } catch (e) {
+      debugPrint('[AuthService] verifyOtpSms: $e');
+      rethrow;
+    }
   }
 
   /// Connexion : essaie d'abord Supabase (en ligne), bascule en local si hors ligne.
@@ -200,6 +213,19 @@ class AuthService {
               .maybeSingle();
           if (row != null) {
             await _storeLocalRole(row['role'] as String? ?? 'agent');
+          } else {
+            // Ligne agent absente : on la crée pour garantir la cohérence
+            final normalized = _normalizePhone(phone);
+            final deviceId = await _getDeviceId();
+            try {
+              await _client.from('agents').insert({
+                'id': user.id,
+                'phone_number': normalized,
+                'whatsapp_number': normalized,
+                if (deviceId != null) 'device_id': deviceId,
+              });
+            } catch (_) {}
+            await _storeLocalRole('agent');
           }
         }
       } catch (_) {}
