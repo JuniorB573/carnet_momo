@@ -106,6 +106,7 @@ class _EditTransactionSheetState extends State<_EditTransactionSheet> {
       network: _network,
       type: _type,
       operationNumber: _operationNumberCtrl.text.trim(),
+      clientName: widget.tx.clientName,
       montant: montant,
       commission: _commission!,
       date: widget.tx.date,

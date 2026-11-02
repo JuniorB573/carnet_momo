@@ -26,7 +26,7 @@ class DatabaseService {
 
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE tranches (
@@ -45,6 +45,7 @@ class DatabaseService {
             network TEXT NOT NULL,
             type TEXT NOT NULL,
             operation_number TEXT NOT NULL,
+            client_name TEXT,
             montant INTEGER NOT NULL,
             commission INTEGER NOT NULL,
             date TEXT NOT NULL
@@ -57,6 +58,19 @@ class DatabaseService {
         await db.execute(
           'CREATE INDEX idx_transactions_date ON transactions(date)',
         );
+        await db.execute(
+          'CREATE INDEX idx_transactions_op_number ON transactions(operation_number)',
+        );
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          try {
+            await db.execute('ALTER TABLE transactions ADD COLUMN client_name TEXT');
+          } catch (_) {}
+          try {
+            await db.execute('CREATE INDEX idx_transactions_op_number ON transactions(operation_number)');
+          } catch (_) {}
+        }
       },
     );
   }
@@ -160,4 +174,39 @@ class DatabaseService {
     );
     return rows.map((r) => MomoTransaction.fromMap(r)).toList();
   }
+
+  /// Recherche un client déjà enregistré avec ce numéro :
+  /// Renvoie un enregistrement avec le nom mémorisé et le nombre d'opérations passées.
+  Future<Map<String, dynamic>?> lookupClientByNumber(String operationNumber) async {
+    final clean = operationNumber.replaceAll(RegExp(r'[^\d]'), '');
+    if (clean.length < 6) return null;
+
+    final db = await database;
+    // On cherche d'abord s'il y a un nom enregistré
+    final rowsWithName = await db.query(
+      'transactions',
+      columns: ['client_name', 'date', 'type', 'montant'],
+      where: "REPLACE(REPLACE(REPLACE(operation_number, ' ', ''), '-', ''), '+', '') LIKE ? AND client_name IS NOT NULL AND client_name != ''",
+      whereArgs: ['%$clean%'],
+      orderBy: 'date DESC',
+      limit: 1,
+    );
+
+    final totalCountResult = await db.rawQuery('''
+      SELECT COUNT(*) as count, MAX(date) as last_date
+      FROM transactions
+      WHERE REPLACE(REPLACE(REPLACE(operation_number, ' ', ''), '-', ''), '+', '') LIKE ?
+    ''', ['%$clean%']);
+
+    final count = Sqflite.firstIntValue(totalCountResult) ?? 0;
+    if (count == 0) return null;
+
+    final String? clientName = rowsWithName.isNotEmpty ? rowsWithName.first['client_name'] as String? : null;
+    return {
+      'count': count,
+      'client_name': clientName,
+      'last_tx': rowsWithName.isNotEmpty ? rowsWithName.first : null,
+    };
+  }
 }
+

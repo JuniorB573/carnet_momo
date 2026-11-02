@@ -4,6 +4,7 @@ class MomoTransaction {
   final String network; // 'mtn' | 'moov' | 'celtiis'
   final String type; // 'depot' | 'retrait'
   final String operationNumber;
+  final String? clientName; // Nom ou alias du client (optionnel)
   final int montant;
   final int commission;
   final DateTime date;
@@ -13,6 +14,7 @@ class MomoTransaction {
     required this.network,
     required this.type,
     required this.operationNumber,
+    this.clientName,
     required this.montant,
     required this.commission,
     required this.date,
@@ -24,6 +26,7 @@ class MomoTransaction {
       'network': network,
       'type': type,
       'operation_number': operationNumber,
+      'client_name': clientName,
       'montant': montant,
       'commission': commission,
       'date': date.toIso8601String(),
@@ -36,9 +39,11 @@ class MomoTransaction {
       network: map['network'] as String,
       type: map['type'] as String,
       operationNumber: map['operation_number'] as String,
+      clientName: map['client_name'] as String?,
       montant: map['montant'] as int,
       commission: map['commission'] as int,
       date: DateTime.parse(map['date'] as String),
     );
   }
 }
+

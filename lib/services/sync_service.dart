@@ -89,6 +89,7 @@ class SyncService {
             'network': row['network'],
             'type': row['type'],
             'operation_number': row['operation_number'],
+            'client_name': row['client_name'],
             'montant': row['montant'],
             'commission': row['commission'],
             'date': row['date'],

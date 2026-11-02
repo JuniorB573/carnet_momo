@@ -230,7 +230,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
-          '${tx.operationNumber} · ${DateFormat('dd/MM/yyyy HH:mm').format(tx.date)}',
+          '${tx.operationNumber}${tx.clientName != null && tx.clientName!.isNotEmpty ? " (${tx.clientName})" : ""} · ${DateFormat('dd/MM/yyyy HH:mm').format(tx.date)}',
           style: const TextStyle(fontSize: 12, color: AppColors.inkMuted),
         ),
         trailing: Column(

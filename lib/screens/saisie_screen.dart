@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/momo_transaction.dart';
@@ -31,12 +32,17 @@ class SaisieScreen extends StatefulWidget {
 
 class _SaisieScreenState extends State<SaisieScreen> {
   final _db = DatabaseService.instance;
+  static const _platform = MethodChannel('app.carnetmomo/contacts');
+
   String _type = 'depot';
   final _operationNumberCtrl = TextEditingController();
+  final _clientNameCtrl = TextEditingController();
   final _montantCtrl = TextEditingController();
   int? _commission;
   String? _error;
   bool _checking = false;
+  Map<String, dynamic>? _clientInfo;
+  Timer? _searchDebounce;
 
   String get _lang => widget.languageController.value;
 
@@ -53,6 +59,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
     widget.networkController.addListener(_onNetworkChanged);
     widget.languageController.addListener(_onLanguageChanged);
     widget.countryController.addListener(_onCountryChanged);
+    _operationNumberCtrl.addListener(_onOperationNumberChanged);
     _refreshTodaySummary();
   }
 
@@ -65,7 +72,10 @@ class _SaisieScreenState extends State<SaisieScreen> {
     widget.networkController.removeListener(_onNetworkChanged);
     widget.languageController.removeListener(_onLanguageChanged);
     widget.countryController.removeListener(_onCountryChanged);
+    _operationNumberCtrl.removeListener(_onOperationNumberChanged);
+    _searchDebounce?.cancel();
     _operationNumberCtrl.dispose();
+    _clientNameCtrl.dispose();
     _montantCtrl.dispose();
     super.dispose();
   }
@@ -73,6 +83,54 @@ class _SaisieScreenState extends State<SaisieScreen> {
   void _onNetworkChanged() {
     setState(() {});
     _refreshTodaySummary();
+  }
+
+  void _onOperationNumberChanged() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+      final number = _operationNumberCtrl.text.trim();
+      final clean = number.replaceAll(RegExp(r'[^\d]'), '');
+      if (clean.length >= 6) {
+        final info = await _db.lookupClientByNumber(number);
+        if (!mounted) return;
+        setState(() {
+          _clientInfo = info;
+          if (info != null && (info['client_name'] as String?) != null && _clientNameCtrl.text.isEmpty) {
+            _clientNameCtrl.text = info['client_name'] as String;
+          }
+        });
+      } else {
+        if (!mounted) return;
+        setState(() => _clientInfo = null);
+      }
+    });
+  }
+
+  /// Ouvre le sélecteur de contacts du téléphone
+  Future<void> _pickContactFromPhone() async {
+    try {
+      final result = await _platform.invokeMethod<Map<dynamic, dynamic>>('pickContact');
+      if (result != null) {
+        final rawNumber = result['number'] as String? ?? '';
+        final name = result['name'] as String? ?? '';
+
+        // Formater le numéro
+        var cleaned = rawNumber.replaceAll(RegExp(r'[^\d+]'), '');
+        final indicatif = countryById(widget.countryController.value)['indicatif'] as String;
+        if (!cleaned.startsWith('+') && !cleaned.startsWith(indicatif.replaceAll('+', ''))) {
+          cleaned = '$indicatif $cleaned';
+        }
+
+        setState(() {
+          _operationNumberCtrl.text = cleaned;
+          if (name.isNotEmpty) {
+            _clientNameCtrl.text = name;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('pickContact error: $e');
+    }
   }
 
   Future<void> _refreshTodaySummary() async {
@@ -127,6 +185,7 @@ class _SaisieScreenState extends State<SaisieScreen> {
   Future<void> _save() async {
     final montant = int.tryParse(_montantCtrl.text);
     final opNumber = _operationNumberCtrl.text.trim();
+    final clientName = _clientNameCtrl.text.trim().isNotEmpty ? _clientNameCtrl.text.trim() : null;
 
     final opError = validateOperationNumberForCountry(
       opNumber,
@@ -150,7 +209,8 @@ class _SaisieScreenState extends State<SaisieScreen> {
       id: const Uuid().v4(),
       network: widget.networkController.value,
       type: _type,
-      operationNumber: _operationNumberCtrl.text.trim(),
+      operationNumber: opNumber,
+      clientName: clientName,
       montant: montant,
       commission: _commission!,
       date: DateTime.now(),
@@ -159,13 +219,15 @@ class _SaisieScreenState extends State<SaisieScreen> {
     unawaited(SyncService().pushTransaction(tx));
     unawaited(LocalNotificationService.showTransactionNotification(
       title: tx.type == 'depot' ? 'Dépôt enregistré' : 'Retrait enregistré',
-      body: '${fmtF(tx.montant)} · Commission ${fmtF(tx.commission)}',
+      body: '${clientName != null ? "$clientName · " : ""}${fmtF(tx.montant)} · Commission ${fmtF(tx.commission)}',
     ));
 
     _operationNumberCtrl.clear();
+    _clientNameCtrl.clear();
     _montantCtrl.clear();
     setState(() {
       _commission = null;
+      _clientInfo = null;
       _error = null;
     });
     _refreshTodaySummary();
@@ -219,18 +281,83 @@ class _SaisieScreenState extends State<SaisieScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(t('numero_operation', _lang).toUpperCase(),
-                      style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(t('numero_operation', _lang).toUpperCase(),
+                          style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(50, 24),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.contacts, size: 14, color: AppColors.green),
+                        label: Text(
+                          t('choisir_contact', _lang),
+                          style: const TextStyle(fontSize: 11.5, color: AppColors.green, fontWeight: FontWeight.w600),
+                        ),
+                        onPressed: _pickContactFromPhone,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
                   TextField(
                     controller: _operationNumberCtrl,
                     keyboardType: TextInputType.phone,
                     decoration: InputDecoration(
                       hintText: (countryById(widget.countryController.value)['placeholder'] as String?) ?? t('numero_operation', _lang),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.perm_contact_calendar_outlined, color: AppColors.green, size: 20),
+                        tooltip: t('choisir_contact', _lang),
+                        onPressed: _pickContactFromPhone,
+                      ),
                     ),
                   ),
+
+                  // Solution 1 : Badge automatique client connu et historique
+                  if (_clientInfo != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.green.withValues(alpha: 0.25)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_pin, size: 16, color: AppColors.green),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              "${t('client_connu', _lang)} : ${_clientInfo!['count']} ${(_clientInfo!['count'] as int) > 1 ? t('operation_precedentes_pl', _lang) : t('operation_precedente_sg', _lang)}${_clientInfo!['client_name'] != null ? ' (${_clientInfo!['client_name']})' : ''}",
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.green),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // Solution 2 : Champ Nom du client / Bénéficiaire optionnel
+                  const SizedBox(height: 14),
+                  Text(t('nom_client_optionnel', _lang).toUpperCase(),
+                      style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _clientNameCtrl,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      hintText: t('nom_client_hint', _lang),
+                      prefixIcon: const Icon(Icons.person_outline, size: 18, color: AppColors.inkMuted),
+                    ),
+                  ),
+
                   const SizedBox(height: 14),
                   Text(t('montant', _lang).toUpperCase(),
                       style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
                   TextField(
                     controller: _montantCtrl,
                     keyboardType: TextInputType.number,
