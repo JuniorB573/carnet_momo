@@ -8,7 +8,6 @@ import '../services/translations.dart';
 import '../services/country_controller.dart';
 import '../theme/app_theme.dart';
 import '../theme/networks.dart';
-import 'archive_screen.dart';
 
 /// Vue globale des totaux et des commissions : toutes les opérations de
 /// dépôt et de retrait, pour tous les réseaux, avec calcul automatique du
@@ -93,41 +92,17 @@ class _SyntheseScreenState extends State<SyntheseScreen> {
             children: [
               Text(t('synthese', _lang),
                   style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: AppColors.ink)),
-              Row(
-                children: [
-                  IconButton(
-                    tooltip: t('archive', _lang),
-                    icon: const Icon(Icons.folder_outlined, color: AppColors.inkSoft),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => Scaffold(
-                          appBar: AppBar(
-                            title: Text(t('archive', _lang)),
-                          ),
-                          body: SafeArea(
-                            child: ArchiveScreen(
-                              languageController: widget.languageController,
-                              countryController: widget.countryController,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  OutlinedButton.icon(
-                    onPressed: _exporting ? null : () => _exportPdf(today, currentMonthTx),
-                    icon: _exporting
-                        ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                    label: Text(t('exporter', _lang)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.green,
-                      side: const BorderSide(color: AppColors.green),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    ),
-                  ),
-                ],
+              OutlinedButton.icon(
+                onPressed: _exporting ? null : () => _exportPdf(today, currentMonthTx),
+                icon: _exporting
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                label: Text(t('exporter', _lang)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.green,
+                  side: const BorderSide(color: AppColors.green),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
               ),
             ],
           ),

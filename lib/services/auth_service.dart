@@ -405,4 +405,19 @@ class AuthService {
       return localRole == 'admin';
     }
   }
+
+  /// Définit le rôle admin (ou agent) pour l'utilisateur courant,
+  /// met à jour le cache local et Supabase si connecté.
+  Future<void> setAdminRole(bool isAdmin) async {
+    final role = isAdmin ? 'admin' : 'agent';
+    await _storeLocalRole(role);
+    final user = currentUser;
+    if (user != null) {
+      try {
+        await _client.from('agents').update({'role': role}).eq('id', user.id);
+      } catch (e) {
+        debugPrint('[AuthService] setAdminRole error: $e');
+      }
+    }
+  }
 }

@@ -11,6 +11,7 @@ enum AgentSubStatus { essai, actif, expire, inconnu }
 class AgentSummary {
   final String id;
   final String phoneNumber;
+  final String? whatsappNumber;
   final String? country;
   final String role;
   final AgentSubStatus subStatus;
@@ -19,10 +20,12 @@ class AgentSummary {
   final int transactionCount;
   final int totalMontant;
   final int totalCommission;
+  final DateTime? createdAt;
 
   AgentSummary({
     required this.id,
     required this.phoneNumber,
+    this.whatsappNumber,
     required this.country,
     required this.role,
     required this.subStatus,
@@ -31,6 +34,7 @@ class AgentSummary {
     required this.transactionCount,
     required this.totalMontant,
     required this.totalCommission,
+    this.createdAt,
   });
 }
 
@@ -120,7 +124,7 @@ class AdminDashboardService {
   /// le cumul de leurs opérations (dépôts + retraits confondus). Trié du
   /// plus gros contributeur de commission au plus petit.
   Future<List<AgentSummary>> fetchAgentSummaries() async {
-    final agentsRows = await _client.from('agents').select('id, phone_number, country, role').timeout(const Duration(seconds: 10));
+    final agentsRows = await _client.from('agents').select('id, phone_number, whatsapp_number, country, role, created_at').timeout(const Duration(seconds: 10));
     final subsRows = await _client.from('subscriptions').select('agent_id, trial_start, paid_until').timeout(const Duration(seconds: 10));
     final txRows = await _client.from('transactions').select('agent_id, montant, commission').timeout(const Duration(seconds: 10));
 
@@ -141,9 +145,14 @@ class AdminDashboardService {
     final summaries = agentsRows.map<AgentSummary>((row) {
       final id = row['id'] as String;
       final sub = subsByAgent[id];
+      DateTime? createdAt;
+      if (row['created_at'] != null) {
+        createdAt = DateTime.tryParse(row['created_at'].toString())?.toLocal();
+      }
       return AgentSummary(
         id: id,
         phoneNumber: row['phone_number'] as String? ?? '—',
+        whatsappNumber: row['whatsapp_number'] as String?,
         country: row['country'] as String?,
         role: row['role'] as String? ?? 'agent',
         subStatus: _statusFromRow(sub),
@@ -152,6 +161,7 @@ class AdminDashboardService {
         transactionCount: txCountByAgent[id] ?? 0,
         totalMontant: txMontantByAgent[id] ?? 0,
         totalCommission: txCommissionByAgent[id] ?? 0,
+        createdAt: createdAt,
       );
     }).toList();
 

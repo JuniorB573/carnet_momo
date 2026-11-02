@@ -17,6 +17,7 @@ import '../theme/networks.dart';
 import '../services/auth_service.dart';
 import '../services/owner_service.dart';
 import 'abonnement_screen.dart';
+import 'admin_dashboard_screen.dart';
 import 'owner_dashboard_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -477,6 +478,175 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
     );
   }
 
+  Widget _adminDashboardCard() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: AppColors.green.withValues(alpha: 0.35), width: 1.2),
+      ),
+      color: AppColors.green.withValues(alpha: 0.05),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _openAdminDashboard,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: AppColors.green.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.admin_panel_settings_rounded, color: AppColors.green, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            t('tableau_admin_titre', _lang),
+                            style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: AppColors.ink),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.green,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'ADMIN',
+                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      t('tableau_admin_desc', _lang),
+                      style: const TextStyle(fontSize: 12, color: AppColors.inkSoft),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 20, color: AppColors.inkMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openAdminDashboard() async {
+    final auth = AuthService();
+    final isAdmin = await auth.isCurrentUserAdmin();
+    if (!mounted) return;
+
+    if (isAdmin) {
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => AdminDashboardScreen(
+          languageController: widget.languageController,
+          countryController: widget.countryController,
+          onSignOut: () async {
+            Navigator.of(context).pop();
+            await auth.signOut();
+          },
+        ),
+      ));
+      return;
+    }
+
+    final codeCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.admin_panel_settings_rounded, color: AppColors.green),
+            const SizedBox(width: 8),
+            Text(t('acces_admin_titre', _lang), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              t('code_admin_prompt', _lang),
+              style: const TextStyle(fontSize: 13, color: AppColors.inkSoft),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: codeCtrl,
+              autofocus: true,
+              obscureText: true,
+              keyboardType: TextInputType.text,
+              decoration: InputDecoration(
+                labelText: t('code_admin_hint', _lang),
+                prefixIcon: const Icon(Icons.lock_outline),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(t('annuler', _lang)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.green,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Valider', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true && codeCtrl.text.trim().isNotEmpty) {
+      final code = codeCtrl.text.trim();
+      if (code == '2026' || code == 'carnet2026' || code == '7799' || code == '0153467177') {
+        await auth.setAdminRole(true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t('code_admin_valide', _lang)),
+            backgroundColor: AppColors.green,
+          ),
+        );
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => AdminDashboardScreen(
+            languageController: widget.languageController,
+            countryController: widget.countryController,
+            onSignOut: () async {
+              Navigator.of(context).pop();
+              await auth.signOut();
+            },
+          ),
+        ));
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t('code_admin_invalide', _lang)),
+            backgroundColor: AppColors.orange,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final networks = networksForCountry(widget.countryController.value);
@@ -594,6 +764,12 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
         _ownerSpaceCard(),
         const SizedBox(height: 10),
         _agentOwnerCodeCard(),
+
+        const SizedBox(height: 24),
+        const Text('ADMINISTRATION',
+            style: TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 10),
+        _adminDashboardCard(),
 
         const SizedBox(height: 24),
         Text(t('nous_contacter', _lang).toUpperCase(),

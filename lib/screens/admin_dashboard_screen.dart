@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/admin_dashboard_service.dart';
+import '../services/auth_service.dart';
 import '../services/country_controller.dart';
 import '../services/formatters.dart';
 import '../services/translations.dart';
@@ -32,6 +34,9 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final _service = AdminDashboardService();
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  AgentSubStatus? _statusFilter;
   List<AgentSummary> _agents = [];
   List<AgentFeedback> _feedbacks = [];
   bool _loading = true;
@@ -79,6 +84,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void dispose() {
     _subscription?.unsubscribe();
+    _searchController.dispose();
     widget.languageController.removeListener(_onLanguageChanged);
     super.dispose();
   }
@@ -113,6 +119,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
+  Future<void> _contactAgentWhatsApp(AgentSummary agent) async {
+    final rawPhone = agent.whatsappNumber?.isNotEmpty == true
+        ? agent.whatsappNumber!
+        : agent.phoneNumber;
+    final e164 = AuthService().formatE164Phone(rawPhone);
+    final msg = Uri.encodeComponent(
+      _lang == 'fr'
+          ? 'Bonjour, je vous contacte depuis Carnet MoMo.'
+          : 'Hello, I am contacting you from Carnet MoMo.',
+    );
+    final url = Uri.parse('https://wa.me/$e164?text=$msg');
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(url);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Impossible d\'ouvrir WhatsApp : $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final totalCommission = _agents.fold<int>(0, (a, s) => a + s.totalCommission);
@@ -121,12 +153,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         ? 0.0
         : _feedbacks.fold<int>(0, (a, f) => a + f.rating) / _feedbacks.length;
 
+    final activeCount = _agents.where((a) => a.subStatus == AgentSubStatus.actif).length;
+    final trialCount = _agents.where((a) => a.subStatus == AgentSubStatus.essai).length;
+    final expiredCount = _agents.where((a) => a.subStatus == AgentSubStatus.expire).length;
+
+    final filteredAgents = _agents.where((a) {
+      if (_statusFilter != null && a.subStatus != _statusFilter) return false;
+      if (_searchQuery.isNotEmpty) {
+        final country = a.country != null ? countryById(a.country!) : null;
+        final countryName = country != null ? country['name'].toString().toLowerCase() : '';
+        final phone = a.phoneNumber.toLowerCase();
+        final whatsapp = a.whatsappNumber?.toLowerCase() ?? '';
+        if (!phone.contains(_searchQuery) &&
+            !whatsapp.contains(_searchQuery) &&
+            !countryName.contains(_searchQuery)) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
+
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(t('tableau_de_bord', _lang)),
+          leading: Navigator.canPop(context) ? const BackButton() : null,
+          title: Text(t('tableau_admin_titre', _lang)),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Actualiser',
+              onPressed: () => _load(),
+            ),
             IconButton(
               icon: const Icon(Icons.smartphone),
               tooltip: t('voir_comme_agent', _lang),
@@ -174,26 +232,86 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       children: [
                         // Onglet 1 : Agents
                         ListView(
-                          padding: const EdgeInsets.all(18),
+                          padding: const EdgeInsets.all(16),
                           children: [
                             Row(
                               children: [
+                                Expanded(child: _statCard(t('agents_connectes', _lang), '${_agents.length}')),
+                                const SizedBox(width: 8),
                                 Expanded(child: _statCard(t('operations_col', _lang), '$totalOperations')),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8),
                                 Expanded(child: _statCard(t('commission_totale_col', _lang), fmtF(totalCommission))),
                               ],
                             ),
-                            const SizedBox(height: 18),
-                            if (_agents.isEmpty)
+                            const SizedBox(height: 14),
+
+                            // Barre de recherche
+                            Container(
+                              decoration: BoxDecoration(
+                                color: AppColors.background,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: TextField(
+                                controller: _searchController,
+                                onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()),
+                                decoration: InputDecoration(
+                                  hintText: t('rechercher_agent', _lang),
+                                  hintStyle: const TextStyle(fontSize: 13, color: AppColors.inkMuted),
+                                  prefixIcon: const Icon(Icons.search, color: AppColors.inkMuted, size: 20),
+                                  suffixIcon: _searchQuery.isNotEmpty
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear, size: 18),
+                                          onPressed: () {
+                                            _searchController.clear();
+                                            setState(() => _searchQuery = '');
+                                          },
+                                        )
+                                      : null,
+                                  border: InputBorder.none,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+
+                            // Filtres par statut
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  _filterChip(null, '${t('tous_les_agents', _lang)} (${_agents.length})'),
+                                  const SizedBox(width: 8),
+                                  _filterChip(AgentSubStatus.actif, '${t('agents_actifs', _lang)} ($activeCount)', color: AppColors.green),
+                                  const SizedBox(width: 8),
+                                  _filterChip(AgentSubStatus.essai, '${t('agents_essai', _lang)} ($trialCount)', color: AppColors.orange),
+                                  const SizedBox(width: 8),
+                                  _filterChip(AgentSubStatus.expire, '${t('agents_expires', _lang)} ($expiredCount)', color: AppColors.inkMuted),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+
+                            if (filteredAgents.isEmpty)
                               Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 24),
+                                padding: const EdgeInsets.symmetric(vertical: 36),
                                 child: Center(
-                                  child: Text(t('aucun_agent', _lang),
-                                      style: const TextStyle(color: AppColors.inkMuted, fontSize: 13.5)),
+                                  child: Column(
+                                    children: [
+                                      const Icon(Icons.person_search_outlined, size: 48, color: AppColors.inkMuted),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        _searchQuery.isNotEmpty || _statusFilter != null
+                                            ? 'Aucun agent correspondant'
+                                            : t('aucun_agent', _lang),
+                                        style: const TextStyle(color: AppColors.inkMuted, fontSize: 13.5),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               )
                             else
-                              ..._agents.map(_agentCard),
+                              ...filteredAgents.map(_agentCard),
                           ],
                         ),
 
@@ -240,17 +358,46 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  Widget _filterChip(AgentSubStatus? status, String label, {Color? color}) {
+    final active = _statusFilter == status;
+    final chipColor = color ?? AppColors.green;
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: () => setState(() => _statusFilter = status),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? chipColor : chipColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active ? chipColor : chipColor.withValues(alpha: 0.25),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: active ? FontWeight.bold : FontWeight.w600,
+            color: active ? Colors.white : chipColor,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _statCard(String label, String value) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label.toUpperCase(),
-                style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.ink)),
+                style: const TextStyle(fontSize: 10, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.ink)),
           ],
         ),
       ),
@@ -263,65 +410,99 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
+        borderRadius: BorderRadius.circular(12),
         onTap: () async {
           await Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => AgentDetailScreen(agent: agent, languageController: widget.languageController),
           ));
-          // On rafraîchit toujours au retour : l'agent peut avoir été
-          // prolongé exceptionnellement depuis l'écran de détail, et le
-          // statut affiché sur cette carte doit rester à jour.
           _load();
         },
         child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    agent.phoneNumber,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink),
-                  ),
-                ),
-                if (agent.role == 'admin')
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.green.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(8),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              agent.phoneNumber,
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.ink),
+                            ),
+                            if (agent.role == 'admin') ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.green.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text('ADMIN',
+                                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: AppColors.green)),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Text(
+                              country != null ? '${country['flag']} ${country['name']}' : '—',
+                              style: const TextStyle(fontSize: 12.5, color: AppColors.inkSoft),
+                            ),
+                            if (agent.createdAt != null) ...[
+                              const Text(' • ', style: TextStyle(color: AppColors.inkMuted, fontSize: 11)),
+                              Text(
+                                '${t('inscrit_le', _lang)} ${DateFormat('dd/MM/yyyy').format(agent.createdAt!)}',
+                                style: const TextStyle(fontSize: 11, color: AppColors.inkMuted),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
                     ),
-                    child: const Text('ADMIN',
-                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.green)),
                   ),
-                const SizedBox(width: 4),
-                const Icon(Icons.chevron_right, size: 18, color: AppColors.inkMuted),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              country != null ? '${country['flag']} ${country['name']}' : '—',
-              style: const TextStyle(fontSize: 13, color: AppColors.inkSoft),
-            ),
-            const SizedBox(height: 10),
-            _statusBadge(agent),
-            const Divider(height: 22),
-            Row(
-              children: [
-                Expanded(
-                  child: _miniStat(t('operations_col', _lang), '${agent.transactionCount}'),
-                ),
-                Expanded(
-                  child: _miniStat(t('montant_col', _lang), fmtF(agent.totalMontant)),
-                ),
-                Expanded(
-                  child: _miniStat(t('commission_totale_col', _lang), fmtF(agent.totalCommission)),
-                ),
-              ],
-            ),
-          ],
-        ),
+
+                  // Bouton WhatsApp direct
+                  IconButton(
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366).withValues(alpha: 0.12),
+                      foregroundColor: const Color(0xFF128C7E),
+                      padding: const EdgeInsets.all(8),
+                      minimumSize: const Size(36, 36),
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                    tooltip: t('contacter_whatsapp', _lang),
+                    onPressed: () => _contactAgentWhatsApp(agent),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right, size: 18, color: AppColors.inkMuted),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _statusBadge(agent),
+              const Divider(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: _miniStat(t('operations_col', _lang), '${agent.transactionCount}'),
+                  ),
+                  Expanded(
+                    child: _miniStat(t('montant_col', _lang), fmtF(agent.totalMontant)),
+                  ),
+                  Expanded(
+                    child: _miniStat(t('commission_totale_col', _lang), fmtF(agent.totalCommission)),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
