@@ -170,6 +170,7 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
                               customName: name,
                             );
                             if (ctx.mounted) Navigator.pop(ctx);
+                            if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(t('kiosque_ajoute_succes', _lang)),

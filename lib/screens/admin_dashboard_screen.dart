@@ -39,6 +39,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   AgentSubStatus? _statusFilter;
   List<AgentSummary> _agents = [];
   List<AgentFeedback> _feedbacks = [];
+  List<PatronGroup> _patrons = [];
   bool _loading = true;
   String? _error;
   RealtimeChannel? _subscription;
@@ -99,10 +100,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     try {
       final agents = await _service.fetchAgentSummaries();
       final feedbacks = await _service.fetchFeedbacks();
+      final patrons = await _service.fetchPatronsWithKiosks();
       if (!mounted) return;
       setState(() {
         _agents = agents;
         _feedbacks = feedbacks;
+        _patrons = patrons;
         _loading = false;
       });
     } catch (e) {
@@ -119,16 +122,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  Future<void> _contactAgentWhatsApp(AgentSummary agent) async {
-    final rawPhone = agent.whatsappNumber?.isNotEmpty == true
-        ? agent.whatsappNumber!
-        : agent.phoneNumber;
+  Future<void> _openWhatsApp(String rawPhone, String message) async {
     final e164 = AuthService().formatE164Phone(rawPhone);
-    final msg = Uri.encodeComponent(
-      _lang == 'fr'
-          ? 'Bonjour, je vous contacte depuis Carnet MoMo.'
-          : 'Hello, I am contacting you from Carnet MoMo.',
-    );
+    final msg = Uri.encodeComponent(message);
     final url = Uri.parse('https://wa.me/$e164?text=$msg');
     try {
       if (await canLaunchUrl(url)) {
@@ -143,6 +139,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         );
       }
     }
+  }
+
+  Future<void> _contactAgentWhatsApp(AgentSummary agent) async {
+    final rawPhone = agent.whatsappNumber?.isNotEmpty == true
+        ? agent.whatsappNumber!
+        : agent.phoneNumber;
+    final msg = _lang == 'fr'
+        ? 'Bonjour, je vous contacte depuis Carnet MoMo.'
+        : 'Hello, I am contacting you from Carnet MoMo.';
+    await _openWhatsApp(rawPhone, msg);
   }
 
   @override
@@ -174,7 +180,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }).toList();
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           leading: Navigator.canPop(context) ? const BackButton() : null,
@@ -208,6 +214,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Tab(
                 icon: const Icon(Icons.people_alt_outlined, size: 20),
                 text: '${t('agents_tab', _lang)} (${_agents.length})',
+              ),
+              Tab(
+                icon: const Icon(Icons.storefront_outlined, size: 20),
+                text: '${t('patrons_tab', _lang)} (${_patrons.length})',
               ),
               Tab(
                 icon: const Icon(Icons.star_rate_rounded, size: 20),
@@ -315,7 +325,54 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           ],
                         ),
 
-                        // Onglet 2 : Avis & Retours
+                        // Onglet 2 : Patrons & Kiosques
+                        ListView(
+                          padding: const EdgeInsets.all(16),
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(child: _statCard(t('patrons_actifs', _lang), '${_patrons.length}')),
+                                const SizedBox(width: 8),
+                                Expanded(child: _statCard(t('kiosques_lies', _lang), '${_patrons.fold<int>(0, (sum, p) => sum + p.kiosks.length)}')),
+                                const SizedBox(width: 8),
+                                Expanded(child: _statCard(t('volume_reseau', _lang), fmtF(_patrons.fold<int>(0, (sum, p) => sum + p.totalMontant)))),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            if (_patrons.isEmpty)
+                              Card(
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  side: const BorderSide(color: AppColors.border),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+                                  child: Column(
+                                    children: [
+                                      const Icon(Icons.storefront_outlined, size: 48, color: AppColors.inkMuted),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        t('aucun_patron', _lang),
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.ink),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        t('aucun_patron_desc', _lang),
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(fontSize: 12.5, color: AppColors.inkSoft),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                            else
+                              ..._patrons.map(_patronCard),
+                          ],
+                        ),
+
+                        // Onglet 3 : Avis & Retours
                         ListView(
                           padding: const EdgeInsets.all(18),
                           children: [
@@ -503,6 +560,133 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _patronCard(PatronGroup patron) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppColors.green.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.badge_outlined, color: AppColors.green, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            patron.ownerPhone,
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.ink),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.green.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('PATRON',
+                                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: AppColors.green)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${patron.kiosks.length} kiosque(s) / agent(s) rattaché(s)',
+                        style: const TextStyle(fontSize: 12, color: AppColors.inkSoft),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0xFF25D366).withValues(alpha: 0.12),
+                    foregroundColor: const Color(0xFF128C7E),
+                    padding: const EdgeInsets.all(8),
+                    minimumSize: const Size(36, 36),
+                  ),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                  tooltip: 'WhatsApp Patron',
+                  onPressed: () => _openWhatsApp(patron.ownerPhone, 'Bonjour Patron, je vous contacte depuis Carnet MoMo.'),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+            Row(
+              children: [
+                Expanded(child: _miniStat(t('operations_col', _lang), '${patron.totalOperations}')),
+                Expanded(child: _miniStat(t('montant_col', _lang), fmtF(patron.totalMontant))),
+                Expanded(child: _miniStat(t('commission_totale_col', _lang), fmtF(patron.totalCommission))),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'AGENTS & KIOSQUES DE CE PATRON (${patron.kiosks.length})',
+              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.inkMuted),
+            ),
+            const SizedBox(height: 8),
+            ...patron.kiosks.map((kiosk) => Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.storefront, size: 20, color: AppColors.green),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          kiosk.customName,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.ink),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Agent : ${kiosk.agentPhone} • ${kiosk.operations} ops • ${fmtF(kiosk.totalMontant)}',
+                          style: const TextStyle(fontSize: 11.5, color: AppColors.inkSoft),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    style: IconButton.styleFrom(
+                      padding: const EdgeInsets.all(6),
+                      minimumSize: const Size(30, 30),
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Color(0xFF128C7E)),
+                    tooltip: 'WhatsApp Agent',
+                    onPressed: () => _openWhatsApp(kiosk.agentPhone, 'Bonjour, je vous contacte depuis Carnet MoMo.'),
+                  ),
+                ],
+              ),
+            )),
+          ],
         ),
       ),
     );

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/momo_transaction.dart';
+import '../theme/countries.dart';
 
 enum AgentSubStatus { essai, actif, expire, inconnu }
 
@@ -56,6 +58,48 @@ class AgentFeedback {
     required this.rating,
     required this.comment,
     required this.createdAt,
+  });
+}
+
+/// Un kiosque / agent spécifique rattaché à un patron
+class PatronKioskSummary {
+  final String id;
+  final String agentId;
+  final String agentPhone;
+  final String customName;
+  final int operations;
+  final int totalMontant;
+  final int totalCommission;
+  final DateTime? addedAt;
+
+  PatronKioskSummary({
+    required this.id,
+    required this.agentId,
+    required this.agentPhone,
+    required this.customName,
+    required this.operations,
+    required this.totalMontant,
+    required this.totalCommission,
+    this.addedAt,
+  });
+}
+
+/// Un groupe représentant un patron et tous ses kiosques / agents spécifiques
+class PatronGroup {
+  final String ownerId;
+  final String ownerPhone;
+  final List<PatronKioskSummary> kiosks;
+  final int totalMontant;
+  final int totalCommission;
+  final int totalOperations;
+
+  PatronGroup({
+    required this.ownerId,
+    required this.ownerPhone,
+    required this.kiosks,
+    required this.totalMontant,
+    required this.totalCommission,
+    required this.totalOperations,
   });
 }
 
@@ -149,11 +193,21 @@ class AdminDashboardService {
       if (row['created_at'] != null) {
         createdAt = DateTime.tryParse(row['created_at'].toString())?.toLocal();
       }
+      final rawPhone = row['phone_number'] as String? ?? '—';
+      var country = row['country'] as String?;
+      final detected = detectCountryIdFromPhone(rawPhone, fallback: country ?? 'bj');
+      // Corriger les numéros du Bénin (ex: 014733535...) enregistrés sous 'tg' par erreur
+      if (country == null || country.isEmpty || (country == 'tg' && (rawPhone.startsWith('01') || rawPhone.startsWith('229') || rawPhone.startsWith('+229')))) {
+        country = detected;
+        // Correction silencieuse dans Supabase pour que la base de données soit propre
+        _client.from('agents').update({'country': detected}).eq('id', id).then((_) {}).catchError((_) {});
+      }
+
       return AgentSummary(
         id: id,
-        phoneNumber: row['phone_number'] as String? ?? '—',
+        phoneNumber: rawPhone,
         whatsappNumber: row['whatsapp_number'] as String?,
-        country: row['country'] as String?,
+        country: country,
         role: row['role'] as String? ?? 'agent',
         subStatus: _statusFromRow(sub),
         renewalDate: _renewalFromRow(sub),
@@ -265,5 +319,84 @@ class AdminDashboardService {
             : DateTime.now(),
       );
     }).toList();
+  }
+
+  /// Récupère la liste de tous les patrons et leurs agents spécifiques
+  Future<List<PatronGroup>> fetchPatronsWithKiosks() async {
+    try {
+      final rows = await _client
+          .from('owner_kiosks')
+          .select()
+          .order('created_at', ascending: false)
+          .timeout(const Duration(seconds: 10));
+
+      if (rows.isEmpty) return [];
+
+      final txRows = await _client
+          .from('transactions')
+          .select('agent_id, montant, commission')
+          .timeout(const Duration(seconds: 10));
+
+      final txCountByAgent = <String, int>{};
+      final txMontantByAgent = <String, int>{};
+      final txCommissionByAgent = <String, int>{};
+      for (final row in txRows) {
+        final agentId = row['agent_id'] as String;
+        txCountByAgent[agentId] = (txCountByAgent[agentId] ?? 0) + 1;
+        txMontantByAgent[agentId] = (txMontantByAgent[agentId] ?? 0) + (row['montant'] as int);
+        txCommissionByAgent[agentId] = (txCommissionByAgent[agentId] ?? 0) + (row['commission'] as int);
+      }
+
+      final map = <String, List<PatronKioskSummary>>{};
+      final phoneMap = <String, String>{};
+
+      for (final r in rows) {
+        final ownerId = (r['owner_id'] as String?) ?? 'unknown';
+        final ownerPhone = (r['owner_phone'] as String?) ?? 'Inconnu';
+        final agentId = (r['agent_id'] as String?) ?? '';
+        final agentPhone = (r['agent_phone'] as String?) ?? '';
+        final customName = (r['custom_name'] as String?) ?? 'Kiosque';
+        final addedAt = r['created_at'] != null ? DateTime.tryParse(r['created_at'].toString())?.toLocal() : null;
+
+        phoneMap[ownerId] = ownerPhone;
+
+        final kioskSummary = PatronKioskSummary(
+          id: (r['id'] as String?) ?? '',
+          agentId: agentId,
+          agentPhone: agentPhone,
+          customName: customName,
+          operations: txCountByAgent[agentId] ?? 0,
+          totalMontant: txMontantByAgent[agentId] ?? 0,
+          totalCommission: txCommissionByAgent[agentId] ?? 0,
+          addedAt: addedAt,
+        );
+
+        map.putIfAbsent(ownerId, () => []).add(kioskSummary);
+      }
+
+      final result = <PatronGroup>[];
+      for (final entry in map.entries) {
+        final ownerId = entry.key;
+        final kiosks = entry.value;
+        final totalOps = kiosks.fold<int>(0, (sum, k) => sum + k.operations);
+        final totalMontant = kiosks.fold<int>(0, (sum, k) => sum + k.totalMontant);
+        final totalCom = kiosks.fold<int>(0, (sum, k) => sum + k.totalCommission);
+
+        result.add(PatronGroup(
+          ownerId: ownerId,
+          ownerPhone: phoneMap[ownerId] ?? 'Inconnu',
+          kiosks: kiosks,
+          totalMontant: totalMontant,
+          totalCommission: totalCom,
+          totalOperations: totalOps,
+        ));
+      }
+
+      result.sort((a, b) => b.totalOperations.compareTo(a.totalOperations));
+      return result;
+    } catch (e) {
+      debugPrint('[AdminDashboardService] fetchPatronsWithKiosks: $e');
+      return [];
+    }
   }
 }

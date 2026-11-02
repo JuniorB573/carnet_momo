@@ -133,6 +133,12 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
 
+    // Détection automatique du pays à partir du préfixe saisi
+    final detectedCountry = detectCountryIdFromPhone(phone, fallback: _selectedCountry);
+    if (detectedCountry != _selectedCountry) {
+      setState(() => _selectedCountry = detectedCountry);
+    }
+
     if (_isSignUp) {
       // Validation stricte du format et de la longueur selon le pays choisi
       final phoneError = validatePhoneForCountry(phone, _selectedCountry, isWhatsApp: false, lang: _lang);
@@ -680,13 +686,6 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
               ),
             ),
-          ),
-        ],
-        if (_isSignUp) ...[
-          const SizedBox(height: 6),
-          Text(
-            t('pin_avertissement', _lang),
-            style: const TextStyle(fontSize: 11.5, color: AppColors.orange, height: 1.4),
           ),
         ],
 

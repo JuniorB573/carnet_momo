@@ -13,9 +13,9 @@ const List<Map<String, dynamic>> kCountries = [
     'name': 'Bénin',
     'flag': '🇧🇯',
     'indicatif': '+229',
-    'nationalLengths': [10],
+    'nationalLengths': [8, 9, 10],
     'placeholder': '+229 01 XX XX XX XX',
-    'description': '10 chiffres après +229',
+    'description': '8 à 10 chiffres après +229 (ex: 01 XX XX XX XX ou XX XX XX XX)',
   },
   {
     'id': 'tg',
@@ -67,6 +67,27 @@ const List<Map<String, dynamic>> kCountries = [
 Map<String, dynamic> countryById(String id) =>
     kCountries.firstWhere((c) => c['id'] == id, orElse: () => kCountries.first);
 
+/// Détecte automatiquement l'identifiant du pays à partir d'un numéro de téléphone.
+String detectCountryIdFromPhone(String rawPhone, {String fallback = 'bj'}) {
+  final clean = rawPhone.replaceAll(RegExp(r'[^\d]'), '');
+  if (clean.isEmpty) return fallback;
+
+  if (clean.startsWith('229')) return 'bj';
+  if (clean.startsWith('228')) return 'tg';
+  if (clean.startsWith('225')) return 'ci';
+  if (clean.startsWith('221')) return 'sn';
+  if (clean.startsWith('226')) return 'bf';
+  if (clean.startsWith('223')) return 'ml';
+
+  // Préfixes nationaux caractéristiques
+  // 01 au Bénin (ARCEP plan 10 chiffres, ex: 014733535...)
+  if (clean.startsWith('01')) return 'bj';
+  // 07 ou 05 en Côte d'Ivoire
+  if (clean.startsWith('07') || clean.startsWith('05')) return 'ci';
+
+  return fallback;
+}
+
 /// Valide le numéro en fonction du pays.
 /// Retourne null si valide, ou le message d'erreur si invalide.
 String? validatePhoneForCountry(String rawPhone, String countryId, {bool isWhatsApp = false, String lang = 'fr'}) {
@@ -76,7 +97,14 @@ String? validatePhoneForCountry(String rawPhone, String countryId, {bool isWhats
   final countryName = country['name'] as String;
   final validLengths = (country['nationalLengths'] as List<int>);
 
-  if (!clean.startsWith(indicatif)) {
+  if (clean.isEmpty) {
+    return lang == 'en' ? "Please enter a valid phone number." : "Indique un numéro de téléphone valide.";
+  }
+
+  String nationalPart = clean;
+  if (clean.startsWith(indicatif)) {
+    nationalPart = clean.substring(indicatif.length);
+  } else if (!validLengths.contains(clean.length)) {
     if (lang == 'en') {
       return isWhatsApp
           ? "The WhatsApp number must start with +$indicatif ($countryName)."
@@ -87,18 +115,16 @@ String? validatePhoneForCountry(String rawPhone, String countryId, {bool isWhats
         : "Le numéro doit commencer par l'indicatif +$indicatif ($countryName).";
   }
 
-  final nationalPart = clean.substring(indicatif.length);
-
   if (!validLengths.contains(nationalPart.length)) {
     final expectedStr = validLengths.join(' ou ');
     if (lang == 'en') {
       return isWhatsApp
-          ? "WhatsApp number for $countryName must have $expectedStr digits after +$indicatif (currently ${nationalPart.length})."
-          : "Phone number for $countryName must have $expectedStr digits after +$indicatif (currently ${nationalPart.length}).";
+          ? "WhatsApp number for $countryName must have $expectedStr digits (currently ${nationalPart.length})."
+          : "Phone number for $countryName must have $expectedStr digits (currently ${nationalPart.length}).";
     }
     return isWhatsApp
-        ? "Le numéro WhatsApp pour le $countryName doit comporter $expectedStr chiffres après +$indicatif (actuellement ${nationalPart.length})."
-        : "Le numéro pour le $countryName doit comporter $expectedStr chiffres après +$indicatif (actuellement ${nationalPart.length}).";
+        ? "Le numéro WhatsApp pour le $countryName doit comporter $expectedStr chiffres (actuellement ${nationalPart.length})."
+        : "Le numéro pour le $countryName doit comporter $expectedStr chiffres (actuellement ${nationalPart.length}).";
   }
 
   return null;
