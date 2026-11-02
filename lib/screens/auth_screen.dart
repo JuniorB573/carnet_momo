@@ -2,12 +2,12 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 import '../services/country_controller.dart';
 import '../services/translations.dart';
 import '../theme/app_theme.dart';
 import '../theme/countries.dart';
+import '../widgets/forgot_password_sheet.dart';
 
 class AuthScreen extends StatefulWidget {
   final void Function(bool isNewAccount) onAuthenticated;
@@ -85,9 +85,10 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _loadRegisteredPhone() async {
     final phone = await _auth.getRegisteredPhone();
     if (!mounted) return;
-    if (phone != null) {
+    if (phone != null && phone.isNotEmpty) {
       setState(() {
         _phoneCtrl.text = phone;
+        _isSignUp = false; // Par défaut en mode connexion si un compte existe
       });
     }
   }
@@ -379,340 +380,12 @@ class _AuthScreenState extends State<AuthScreen> {
 
 
   /// Ouvre le formulaire de réinitialisation du code PIN (par SMS ou WhatsApp)
-  Future<void> _showForgotPasswordSheet() async {
-    final phoneCtrl = TextEditingController(text: _phoneCtrl.text.trim());
-    final otpCtrl = TextEditingController();
-    final newPinCtrl = TextEditingController();
-    final confirmPinCtrl = TextEditingController();
-
-    bool smsSent = false;
-    bool loading = false;
-    String? sheetError;
-
-    await showModalBottomSheet(
+  void _showForgotPasswordSheet() {
+    ForgotPasswordSheet.show(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            final bottomInset = MediaQuery.of(ctx).viewInsets.bottom;
-
-            Future<void> openWhatsAppSupport() async {
-              final rawPhone = phoneCtrl.text.trim();
-              const supportPhone = '2290153467177';
-              final message = _lang == 'en'
-                  ? 'Hello Carnet MoMo support, I forgot my PIN code for my account with phone number: $rawPhone. Please help me recover my account.'
-                  : 'Bonjour l\'équipe Carnet MoMo, j\'ai oublié mon code PIN pour mon compte lié au numéro : $rawPhone. Pouvez-vous m\'aider à le réinitialiser svp ?';
-              final url = Uri.parse('https://wa.me/$supportPhone?text=${Uri.encodeComponent(message)}');
-              try {
-                await launchUrl(url, mode: LaunchMode.externalApplication);
-              } catch (e) {
-                debugPrint('Erreur launch WhatsApp: $e');
-              }
-            }
-
-            Future<void> handleSendOtp() async {
-              final phone = phoneCtrl.text.trim();
-              final cleanPhone = phone.replaceAll(RegExp(r'[^\d]'), '');
-              if (cleanPhone.length < 8) {
-                setSheetState(() => sheetError = t('numero_invalide', _lang));
-                return;
-              }
-
-              setSheetState(() {
-                loading = true;
-                sheetError = null;
-              });
-
-              try {
-                await _auth.sendOtpSms(phone);
-                setSheetState(() {
-                  smsSent = true;
-                  loading = false;
-                });
-              } catch (e) {
-                debugPrint('Erreur sendOtpSms: $e');
-                setSheetState(() {
-                  loading = false;
-                  sheetError = _lang == 'en'
-                      ? 'SMS service is temporarily unavailable. Please tap WhatsApp Support below to instantly reset your PIN.'
-                      : 'L\'envoi de SMS est temporairement indisponible. Utilisez le bouton WhatsApp ci-dessous pour être débloqué immédiatement.';
-                });
-              }
-            }
-
-            Future<void> handleResetPin() async {
-              final phone = phoneCtrl.text.trim();
-              final otp = otpCtrl.text.trim();
-              final newPin = newPinCtrl.text.trim();
-              final confirmPin = confirmPinCtrl.text.trim();
-
-              if (otp.length != 6) {
-                setSheetState(() => sheetError = t('code_sms_invalide', _lang));
-                return;
-              }
-              if (newPin.length < 4) {
-                setSheetState(() => sheetError = t('pin_min_4', _lang));
-                return;
-              }
-              if (newPin != confirmPin) {
-                setSheetState(() => sheetError = t('les_pins_ne_correspondent_pas', _lang));
-                return;
-              }
-
-              setSheetState(() {
-                loading = true;
-                sheetError = null;
-              });
-
-              try {
-                await _auth.resetPinWithOtp(
-                  phone: phone,
-                  otp: otp,
-                  newPin: newPin,
-                );
-
-                if (ctx.mounted) {
-                  Navigator.pop(ctx);
-                }
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(t('pin_reinitialise_succes', _lang)),
-                      backgroundColor: AppColors.green,
-                    ),
-                  );
-                  widget.onAuthenticated(false);
-                }
-              } catch (e) {
-                debugPrint('Erreur resetPin: $e');
-                setSheetState(() {
-                  loading = false;
-                  sheetError = _lang == 'en'
-                      ? 'Invalid or expired SMS code. Contact WhatsApp support if needed.'
-                      : 'Code SMS incorrect ou expiré. Vous pouvez aussi contacter l\'assistance WhatsApp.';
-                });
-              }
-            }
-
-            return Container(
-              padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
-                bottom: bottomInset + 20,
-              ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: AppColors.green.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.lock_reset, color: AppColors.green, size: 26),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                t('reinitialiser_pin_titre', _lang),
-                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.ink),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                t('reinitialiser_pin_desc', _lang),
-                                style: const TextStyle(fontSize: 12, color: AppColors.inkSoft),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Champ Téléphone
-                    Text(
-                      t('numero_telephone', _lang).toUpperCase(),
-                      style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: phoneCtrl,
-                      keyboardType: TextInputType.phone,
-                      enabled: !smsSent && !loading,
-                      decoration: const InputDecoration(
-                        hintText: '+229 01 XX XX XX XX',
-                        prefixIcon: Icon(Icons.phone, size: 20, color: AppColors.inkSoft),
-                      ),
-                    ),
-
-                    if (!smsSent) ...[
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        icon: loading
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Icon(Icons.sms_outlined, size: 18),
-                        onPressed: loading ? null : handleSendOtp,
-                        label: Text(loading ? t('un_instant', _lang) : t('recevoir_code_sms', _lang)),
-                      ),
-                    ] else ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        t('code_sms_label', _lang).toUpperCase(),
-                        style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: otpCtrl,
-                        keyboardType: TextInputType.number,
-                        maxLength: 6,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 22, letterSpacing: 6, fontWeight: FontWeight.bold),
-                        decoration: const InputDecoration(
-                          hintText: '000000',
-                          counterText: '',
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        t('nouveau_pin_label', _lang).toUpperCase(),
-                        style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: newPinCtrl,
-                        keyboardType: TextInputType.number,
-                        obscureText: true,
-                        maxLength: 4,
-                        decoration: const InputDecoration(hintText: '••••', counterText: ''),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        t('confirmer_pin_label', _lang).toUpperCase(),
-                        style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 6),
-                      TextField(
-                        controller: confirmPinCtrl,
-                        keyboardType: TextInputType.number,
-                        obscureText: true,
-                        maxLength: 4,
-                        decoration: const InputDecoration(hintText: '••••', counterText: ''),
-                      ),
-                      const SizedBox(height: 18),
-                      ElevatedButton(
-                        onPressed: loading ? null : handleResetPin,
-                        child: Text(loading ? t('un_instant', _lang) : t('reinitialiser_action', _lang)),
-                      ),
-                    ],
-
-                    if (sheetError != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.orange.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.orange.withValues(alpha: 0.3)),
-                        ),
-                        child: Text(
-                          sheetError!,
-                          style: const TextStyle(color: AppColors.orange, fontSize: 12.5),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-
-                    const SizedBox(height: 18),
-                    const Divider(),
-                    const SizedBox(height: 10),
-
-                    // Section Assistance WhatsApp
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE8F5E9),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFA5D6A7)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              const Text('💬', style: TextStyle(fontSize: 20)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  t('aide_whatsapp_titre', _lang),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1B5E20),
-                                    fontSize: 13.5,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            t('aide_whatsapp_desc', _lang),
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF2E7D32), height: 1.3),
-                          ),
-                          const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF1B5E20),
-                              side: const BorderSide(color: Color(0xFF2E7D32)),
-                              backgroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                            icon: const Icon(Icons.chat, size: 18),
-                            onPressed: openWhatsAppSupport,
-                            label: Text(
-                              t('contacter_support_whatsapp', _lang),
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+      lang: _lang,
+      initialPhone: _phoneCtrl.text.trim(),
+      onSuccess: () => widget.onAuthenticated(false),
     );
   }
 
@@ -883,6 +556,69 @@ class _AuthScreenState extends State<AuthScreen> {
             _langChip('en', 'English'),
           ],
         ),
+        const SizedBox(height: 16),
+
+        // Sélecteur Mode : Se connecter / Créer un compte
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() {
+                    _isSignUp = false;
+                    _error = null;
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: !_isSignUp ? AppColors.green : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      t('se_connecter', _lang),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.5,
+                        color: !_isSignUp ? Colors.white : AppColors.inkSoft,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() {
+                    _isSignUp = true;
+                    _error = null;
+                  }),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _isSignUp ? AppColors.green : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _lang == 'en' ? 'Sign Up' : "S'inscrire",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.5,
+                        color: _isSignUp ? Colors.white : AppColors.inkSoft,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: 18),
 
         if (_isSignUp) ...[
@@ -924,22 +660,23 @@ class _AuthScreenState extends State<AuthScreen> {
           decoration: const InputDecoration(hintText: '••••', counterText: ''),
         ),
         if (!_isSignUp) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(
+            child: TextButton.icon(
+              icon: const Icon(Icons.lock_reset, size: 18, color: AppColors.green),
               onPressed: _showForgotPasswordSheet,
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                backgroundColor: AppColors.green.withValues(alpha: 0.08),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: Text(
+              label: Text(
                 t('mot_de_passe_oublie', _lang),
                 style: const TextStyle(
                   color: AppColors.green,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),

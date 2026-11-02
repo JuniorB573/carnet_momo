@@ -228,13 +228,15 @@ class _OwnerDashboardScreenState extends State<OwnerDashboardScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.ink),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        leading: Navigator.of(context).canPop()
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: AppColors.ink),
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : null,
         title: Text(
-          t('espace_proprietaire', _lang),
-          style: const TextStyle(color: AppColors.ink, fontSize: 17, fontWeight: FontWeight.bold),
+          _lang == 'en' ? 'My Dashboard' : 'Mon Tableau de bord',
+          style: const TextStyle(color: AppColors.ink, fontSize: 18, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(

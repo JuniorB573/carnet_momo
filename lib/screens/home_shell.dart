@@ -12,7 +12,7 @@ import '../theme/networks.dart';
 import 'saisie_screen.dart';
 import 'historique_screen.dart';
 import 'synthese_screen.dart';
-import 'archive_screen.dart';
+import 'owner_dashboard_screen.dart';
 import 'reglages_screen.dart';
 import 'abonnement_screen.dart';
 
@@ -157,7 +157,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ),
       HistoriqueScreen(languageController: widget.languageController, countryController: widget.countryController),
       SyntheseScreen(languageController: widget.languageController, countryController: widget.countryController),
-      ArchiveScreen(languageController: widget.languageController, countryController: widget.countryController),
+      OwnerDashboardScreen(
+        languageController: widget.languageController,
+        countryController: widget.countryController,
+      ),
       ReglagesScreen(
         languageController: widget.languageController,
         countryController: widget.countryController,
@@ -193,7 +196,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           NavigationDestination(icon: const Icon(Icons.menu_book_outlined), label: t('saisie', lang)),
           NavigationDestination(icon: const Icon(Icons.history), label: t('historique', lang)),
           NavigationDestination(icon: const Icon(Icons.pie_chart_outline), label: t('synthese', lang)),
-          NavigationDestination(icon: const Icon(Icons.folder_outlined), label: t('archive', lang)),
+          NavigationDestination(
+            icon: const Icon(Icons.storefront_outlined),
+            selectedIcon: const Icon(Icons.storefront, color: AppColors.green),
+            label: lang == 'en' ? 'My Dashboard' : 'Mon Tableau de bord',
+          ),
           NavigationDestination(
             icon: Badge(
               isLabelVisible: isExpired ||

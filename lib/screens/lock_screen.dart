@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/translations.dart';
 import '../theme/app_theme.dart';
+import '../widgets/forgot_password_sheet.dart';
 
 /// Affiché à chaque relance de l'app tant qu'un compte est déjà connecté —
 /// redemande le code PIN pour protéger l'accès si le téléphone tombe dans
@@ -129,12 +130,26 @@ class _LockScreenState extends State<LockScreen> {
                     child: Text(_checking ? t('verification', _lang) : t('deverrouiller', _lang)),
                   ),
                 ),
-                const SizedBox(height: 14),
-                TextButton(
-                  onPressed: widget.onSignOut,
-                  child: Text(
-                    t('pas_mon_numero', _lang),
-                    style: const TextStyle(color: AppColors.inkMuted, fontSize: 12.5),
+                const SizedBox(height: 16),
+                TextButton.icon(
+                  icon: const Icon(Icons.lock_reset, size: 20, color: AppColors.green),
+                  onPressed: () async {
+                    final phone = await _auth.getRegisteredPhone();
+                    if (!context.mounted) return;
+                    ForgotPasswordSheet.show(
+                      context: context,
+                      lang: _lang,
+                      initialPhone: phone,
+                      onSuccess: widget.onUnlocked,
+                    );
+                  },
+                  label: Text(
+                    t('mot_de_passe_oublie', _lang),
+                    style: const TextStyle(
+                      color: AppColors.green,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
