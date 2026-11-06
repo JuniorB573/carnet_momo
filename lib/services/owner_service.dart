@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -259,7 +259,7 @@ class OwnerService {
       throw Exception('L’agent n’a pas encore généré de code. Demandez-lui d’ouvrir Réglages > "Code d’accès patron" sur son téléphone.');
     }
 
-    if (serverCode.trim() != cleanCode && cleanCode != '123456') {
+    if (serverCode.trim() != cleanCode) {
       throw Exception('Code d’accès incorrect. Ce code ne correspond pas au numéro $phone.');
     }
 

@@ -794,12 +794,6 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
         _agentOwnerCodeCard(),
 
         const SizedBox(height: 24),
-        const Text('ADMINISTRATION',
-            style: TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 10),
-        _adminDashboardCard(),
-
-        const SizedBox(height: 24),
         Text(t('nous_contacter', _lang).toUpperCase(),
             style: const TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),

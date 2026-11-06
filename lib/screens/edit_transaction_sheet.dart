@@ -87,6 +87,18 @@ class _EditTransactionSheetState extends State<_EditTransactionSheet> {
       setState(() => _error = opError);
       return;
     }
+
+    // Vérifier que le numéro appartient au réseau sélectionné
+    final networkError = validatePhoneForNetwork(
+      opNumber,
+      _network,
+      widget.country,
+      lang: _lang,
+    );
+    if (networkError != null) {
+      setState(() => _error = networkError);
+      return;
+    }
     if (montant == null || montant <= 0) {
       setState(() => _error = t('indique_montant_valide', _lang));
       return;

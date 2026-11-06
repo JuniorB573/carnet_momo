@@ -295,8 +295,13 @@ class AuthService {
       // Hors ligne ou timeout → vérifier les identifiants locaux
       final localOk = await verifyLocalCredentials(phone, pin);
       if (localOk) {
-        // L'utilisateur est déjà authentifié via Supabase (session persistante)
-        // On retourne une réponse vide — l'app continuer en mode hors ligne
+        // Vérifier que l'agent existe toujours sur le serveur avant d'accepter le login hors ligne
+        final stillExists = await _agentExistsOnServer(phone);
+        if (!stillExists) {
+          // Nettoyer les données locales et refuser la connexion
+          await signOut();
+          throw Exception('Compte supprimé par l\'administrateur.');
+        }
         debugPrint('[AuthService] Connexion hors ligne accordée pour $phone');
         return AuthResponse();
       }
@@ -305,7 +310,20 @@ class AuthService {
     }
   }
 
-  Future<void> signOut() async {
+  Future<bool> _agentExistsOnServer(String phone) async {
+    final normalized = _normalizePhone(phone);
+    try {
+      final row = await _client
+          .from('agents')
+          .select('id')
+          .eq('phone_number', normalized)
+          .maybeSingle();
+      return row != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
     // Effacer les données locales SQLite avant de se déconnecter,
     // pour qu'un autre compte ne voie jamais cet historique.
     await DatabaseService.instance.clearAllData();
@@ -321,22 +339,50 @@ class AuthService {
   }
 
   /// Change le PIN de l'agent.
+  /// Vérifie d'abord l'ancien PIN localement, puis re-authentifie via Supabase
+  /// (nécessaire pour que updateUser soit accepté) avant de mettre à jour.
   Future<void> changePin(String oldPin, String newPin) async {
-    // 1. Vérifier l'ancien PIN
+    // 1. Vérifier l'ancien PIN localement
     final ok = await verifyLocalPin(oldPin);
     if (!ok) throw Exception('Mauvais ancien PIN');
-    
-    // 2. Mettre à jour sur Supabase (si en ligne)
+
+    // 2. Re-authentifier l'utilisateur auprès de Supabase pour obtenir une
+    //    session fraîche — requis par Supabase pour accepter updateUser(password).
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      throw Exception('Aucune session active. Reconnecte-toi d\'abord.');
+    }
+
+    // Récupérer le numéro de téléphone stocké localement pour re-signer
+    final prefs = await SharedPreferences.getInstance();
+    final phonePlain = prefs.getString('local_phone_plain');
+    if (phonePlain == null) {
+      throw Exception('Numéro de téléphone introuvable. Reconnecte-toi.');
+    }
+
+    try {
+      // Re-auth avec l'ancien PIN pour rafraîchir la session
+      await _client.auth.signInWithPassword(
+        email: _toInternalEmail(phonePlain),
+        password: _padPin(oldPin),
+      ).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('invalid') || msg.contains('credentials') || msg.contains('password')) {
+        throw Exception('Mauvais ancien PIN (vérification serveur)');
+      }
+      // Hors ligne : on ne peut pas changer le PIN sans internet
+      throw Exception('Connexion internet requise pour changer le code PIN.');
+    }
+
+    // 3. Mettre à jour le mot de passe sur Supabase
     try {
       await _client.auth.updateUser(UserAttributes(password: _padPin(newPin)));
-    } catch (_) {
-      // Si on est hors ligne, ça échouera, mais on peut quand même forcer
-      // la mise à jour locale si on le souhaite. 
-      // Pour des raisons de sécurité, on va exiger une connexion internet pour changer le PIN.
-      rethrow;
+    } catch (e) {
+      throw Exception('Erreur lors de la mise à jour : ${e.toString()}');
     }
-    
-    // 3. Mettre à jour localement
+
+    // 4. Mettre à jour localement
     await _storeLocalPin(newPin);
   }
 
