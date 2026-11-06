@@ -211,7 +211,7 @@ def create_cahier_des_charges(output_path):
     meta_data = [
         [Paragraph("Projet :", meta_label), Paragraph("Carnet MoMo (Android & Cloud)", meta_val), Paragraph("Version :", meta_label), Paragraph("2.1.0 — Production", meta_val)],
         [Paragraph("Statut :", meta_label), Paragraph("Validé & En exploitation", meta_val), Paragraph("Date :", meta_label), Paragraph("Novembre 2026", meta_val)],
-        [Paragraph("Périmètre géographique :", meta_label), Paragraph("Bénin, Togo, Côte d'Ivoire, Sénégal", meta_val), Paragraph("Sécurité :", meta_label), Paragraph("Chiffrement PIN + RLS Supabase", meta_val)],
+        [Paragraph("Périmètre géographique :", meta_label), Paragraph("Bénin, Togo, Côte d'Ivoire, Sénégal, Burkina Faso, Mali", meta_val), Paragraph("Sécurité :", meta_label), Paragraph("Chiffrement PIN + RLS Supabase", meta_val)],
         [Paragraph("Modèle économique :", meta_label), Paragraph("Essai 7j + Abonnement 800 F CFA/mois", meta_val), Paragraph("Paiement & Gestion :", meta_label), Paragraph("SasPay + Espace Multi-Kiosques", meta_val)]
     ]
     t_meta = Table(meta_data, colWidths=[100, 150, 80, 157])
@@ -400,7 +400,9 @@ def create_cahier_des_charges(output_path):
         [Paragraph("<b>Bénin 🇧🇯</b>", table_cell_bold), Paragraph("BJ · FCFA (XOF)", table_cell), Paragraph("MTN Mobile Money, Moov Money Bénin, Celtiis Cash", table_cell)],
         [Paragraph("<b>Togo 🇹🇬</b>", table_cell_bold), Paragraph("TG · FCFA (XOF)", table_cell), Paragraph("T-Money (Togocom), Moov Money Togo", table_cell)],
         [Paragraph("<b>Côte d'Ivoire 🇨🇮</b>", table_cell_bold), Paragraph("CI · FCFA (XOF)", table_cell), Paragraph("Orange Money CI, MTN MoMo CI, Moov Money CI, Wave CI", table_cell)],
-        [Paragraph("<b>Sénégal 🇸🇳</b>", table_cell_bold), Paragraph("SN · FCFA (XOF)", table_cell), Paragraph("Orange Money SN, Wave Sénégal, Free Money", table_cell)]
+        [Paragraph("<b>Sénégal 🇸🇳</b>", table_cell_bold), Paragraph("SN · FCFA (XOF)", table_cell), Paragraph("Orange Money SN, Wave Sénégal, Free Money", table_cell)],
+        [Paragraph("<b>Burkina Faso 🇧🇫</b>", table_cell_bold), Paragraph("BF · FCFA (XOF)", table_cell), Paragraph("Orange Money BF, Moov Money Burkina", table_cell)],
+        [Paragraph("<b>Mali 🇲🇱</b>", table_cell_bold), Paragraph("ML · FCFA (XOF)", table_cell), Paragraph("Orange Money Mali, Moov Africa Malitel", table_cell)]
     ]
     t_pays = Table(pays_data, colWidths=[100, 110, 277])
     t_pays.setStyle(TableStyle([
@@ -539,7 +541,7 @@ def create_cahier_des_charges(output_path):
         bullet_style
     ))
     story.append(Paragraph(
-        "• <b>Normalisation Intelligente des Numéros</b> : Prise en charge automatique des formats internationaux E.164 (+229, +228, +225, +221) et des numéros locaux (01XXXXXXXX, 8 ou 10 chiffres).",
+        "• <b>Normalisation Intelligente des Numéros</b> : Prise en charge automatique des formats internationaux E.164 (+229, +228, +225, +221, +226, +223) et des numéros locaux (01XXXXXXXX, 8 ou 10 chiffres selon les pays).",
         bullet_style
     ))
     story.append(Paragraph(
@@ -619,7 +621,7 @@ def create_cahier_des_charges(output_path):
     story.append(HRFlowable(width="100%", thickness=1, color=C_PRIMARY, spaceAfter=10))
     
     story.append(Paragraph(
-        "<b>Phase 1 : Déploiement Actuel (Version 2.0 - Stabilisée)</b>", body_style
+        "<b>Phase 1 : Déploiement Actuel (Version 2.1 - Stabilisée)</b>", body_style
     ))
     story.append(Paragraph("• Application Android release compilée et prête pour distribution directe (APK) ou Play Store.", bullet_style))
     story.append(Paragraph("• Base de données Supabase de production avec politiques RLS et fonctions Edge actives.", bullet_style))
@@ -637,7 +639,7 @@ def create_cahier_des_charges(output_path):
     # Signature / Validation
     sign_box = [
         [Paragraph("<b>Validation de la Spécification :</b>", table_cell_bold), Paragraph("<b>Équipe Technique & Produit :</b>", table_cell_bold)],
-        [Paragraph("Direction de Projet Carnet MoMo<br/>Approuvé pour conformité fonctionnelle & technique", table_cell), Paragraph("Lead Developer & Architecte Solutions Mobile<br/>Version APK 2.0.0 prête pour diffusion", table_cell)]
+        [Paragraph("Direction de Projet Carnet MoMo<br/>Approuvé pour conformité fonctionnelle & technique", table_cell), Paragraph("Lead Developer & Architecte Solutions Mobile<br/>Version APK 2.1.0 prête pour diffusion", table_cell)]
     ]
     t_sign = Table(sign_box, colWidths=[240, 247])
     t_sign.setStyle(TableStyle([
