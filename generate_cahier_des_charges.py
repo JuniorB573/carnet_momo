@@ -57,7 +57,7 @@ class NumberedCanvas(canvas.Canvas):
         
         # Pied de page
         self.line(54, 45, 541, 45)
-        self.drawString(54, 34, "Document Confidentiel — Version 2.0 (Octobre 2026)")
+        self.drawString(54, 34, "Document Confidentiel — Version 2.1 (Novembre 2026)")
         page_str = f"Page {self._pageNumber} sur {page_count}"
         self.drawRightString(541, 34, page_str)
         self.restoreState()
@@ -209,10 +209,10 @@ def create_cahier_des_charges(output_path):
     
     # Boîte de métadonnées de couverture
     meta_data = [
-        [Paragraph("Projet :", meta_label), Paragraph("Carnet MoMo (Android & Cloud)", meta_val), Paragraph("Version :", meta_label), Paragraph("2.0.0 — Production", meta_val)],
-        [Paragraph("Statut :", meta_label), Paragraph("Validé & En exploitation", meta_val), Paragraph("Date :", meta_label), Paragraph("Octobre 2026", meta_val)],
+        [Paragraph("Projet :", meta_label), Paragraph("Carnet MoMo (Android & Cloud)", meta_val), Paragraph("Version :", meta_label), Paragraph("2.1.0 — Production", meta_val)],
+        [Paragraph("Statut :", meta_label), Paragraph("Validé & En exploitation", meta_val), Paragraph("Date :", meta_label), Paragraph("Novembre 2026", meta_val)],
         [Paragraph("Périmètre géographique :", meta_label), Paragraph("Bénin, Togo, Côte d'Ivoire, Sénégal", meta_val), Paragraph("Sécurité :", meta_label), Paragraph("Chiffrement PIN + RLS Supabase", meta_val)],
-        [Paragraph("Modèle économique :", meta_label), Paragraph("Essai 7j + Abonnement 800 F CFA/mois", meta_val), Paragraph("Paiement :", meta_label), Paragraph("Passerelle SasPay (MoMo / Carte)", meta_val)]
+        [Paragraph("Modèle économique :", meta_label), Paragraph("Essai 7j + Abonnement 800 F CFA/mois", meta_val), Paragraph("Paiement & Gestion :", meta_label), Paragraph("SasPay + Espace Multi-Kiosques", meta_val)]
     ]
     t_meta = Table(meta_data, colWidths=[100, 150, 80, 157])
     t_meta.setStyle(TableStyle([
@@ -515,7 +515,7 @@ def create_cahier_des_charges(output_path):
         [Paragraph("<b>Essai Gratuit</b>", table_cell_bold), Paragraph("<b>7 jours offerts</b> dès la création du compte. Accès complet sans restriction.", table_cell)],
         [Paragraph("<b>Tarif Mensuel</b>", table_cell_bold), Paragraph("<b>800 F CFA / mois</b> (au lieu de 1 000 F CFA précédemment).", table_cell)],
         [Paragraph("<b>Passerelle de Paiement</b>", table_cell_bold), Paragraph("<b>SasPay</b> (Mobile Money MTN/Moov/Orange/Wave et Cartes). Déclenché via Edge Function.", table_cell)],
-        [Paragraph("<b>Activation Automatique</b>", table_cell_bold), Paragraph("Dès confirmation SasPay, le webhook met à jour <code>paid_until</code> (+30 jours). Zéro code à saisir.", table_cell)],
+        [Paragraph("<b>Activation Automatique</b>", table_cell_bold), Paragraph("Dès confirmation SasPay, le webhook met à jour <code>paid_until</code> (+30 jours). Déblocage instantané via <code>ValueNotifier</code> et synchronisation forcée (zéro redémarrage requis).", table_cell)],
         [Paragraph("<b>Prolongation Manuelle</b>", table_cell_bold), Paragraph("Le Super-Admin peut accorder +7, +15 ou +30 jours d'office depuis son tableau de bord.", table_cell)],
         [Paragraph("<b>Notifications d'Activation</b>", table_cell_bold), Paragraph("Notification locale instantanée : <i>'🎉 Abonnement activé ! Vous pouvez continuer à travailler.'</i>", table_cell)],
         [Paragraph("<b>Gestion du Verrouillage</b>", table_cell_bold), Paragraph("Écran <code>_ExpiredGate</code> avec cadenas bloquant les saisies à l'expiration, laissant l'accès aux réglages.", table_cell)],
@@ -533,7 +533,30 @@ def create_cahier_des_charges(output_path):
     story.append(t_abo)
     
     story.append(Spacer(1, 10))
-    story.append(Paragraph("4.7 Espace Super-Admin & Supervision Globale", h2_style))
+    story.append(Paragraph("4.7 Espace Propriétaire / Patron & Supervision Multi-Kiosques", h2_style))
+    story.append(Paragraph(
+        "• <b>Liaison Sécurisée Patron ↔ Agents</b> : L'agent génère un code d'accès confidentiel à 6 chiffres depuis ses Réglages (régénérable en 1 clic pour révoquer un accès). Le propriétaire renseigne ce code et le numéro pour lier le kiosque à son tableau de bord.",
+        bullet_style
+    ))
+    story.append(Paragraph(
+        "• <b>Normalisation Intelligente des Numéros</b> : Prise en charge automatique des formats internationaux E.164 (+229, +228, +225, +221) et des numéros locaux (01XXXXXXXX, 8 ou 10 chiffres).",
+        bullet_style
+    ))
+    story.append(Paragraph(
+        "• <b>Monitoring Financier en Temps Réel</b> : Vue consolidée par kiosque (dépôts, retraits, volume total, commissions nettes perçues) avec filtrage par période (aujourd'hui, semaine, mois).",
+        bullet_style
+    ))
+    story.append(Paragraph(
+        "• <b>Synchronisation Cloud & Cache Hors-Ligne</b> : Enregistrement sur la table <code>owner_kiosks</code> avec réplication locale SQLite/SharedPreferences garantissant la consultation même sans réseau.",
+        bullet_style
+    ))
+    story.append(Paragraph(
+        "• <b>Export PDF Fiche Kiosque Dédiée</b> : Possibilité pour le patron de générer et partager via WhatsApp le bilan financier certifié de chaque agent.",
+        bullet_style
+    ))
+    
+    story.append(Spacer(1, 10))
+    story.append(Paragraph("4.8 Espace Super-Admin & Supervision Globale", h2_style))
     story.append(Paragraph(
         "• <b>Vue d'Ensemble du Parc d'Agents</b> : Tableau consolidé recensant tous les agents inscrits, leur pays, statut d'abonnement et date d'expiration.",
         bullet_style
