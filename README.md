@@ -1,42 +1,92 @@
-# Carnet MoMo — Projet Flutter (V1, étape 1)
+# Carnet MoMo 📱💼
 
-## Ce qui est déjà là
-- Saisie d'opérations (dépôt/retrait) avec calcul automatique de commission
-- Grilles de commission configurables par réseau (MTN, Moov, Celtiis) et par type
-- Historique avec bilan jour/mois
-- Résumé du jour visible directement sur l'écran de saisie
-- Stockage 100% local (SQLite) — fonctionne entièrement hors ligne
-- Essai gratuit de 4 jours + activation par code (fonctionne aussi hors ligne)
+**Carnet MoMo** est une application mobile & cloud professionnelle conçue pour numériser, simplifier et fiabiliser la gestion quotidienne des points de vente et agents de Mobile Money en Afrique de l'Ouest.
 
-## Ce qui manque encore (prochaines étapes)
-- Compte agent (inscription numéro + PIN)
-- Synchronisation avec un serveur (Supabase/Firebase) pour la sauvegarde
-- Espace administrateur pour activer les abonnements
-- Multilingue FR/EN/Fon
+L'application élimine définitivement les erreurs de calcul manuel des commissions grâce à un moteur dynamique par paliers, offre un suivi rigoureux des opérations (dépôts / retraits), assure une continuité d'activité 100% hors-ligne et intègre une supervision multi-kiosques pour les propriétaires.
 
-## Comment lancer le projet
+---
 
-1. Copie tout ce dossier dans VS Code.
-2. Ouvre un terminal dans ce dossier et lance :
+## 🚀 Fonctionnalités Clés
+
+### 1. Saisie Rapide & Moteur de Commission Dynamique
+- Sélection immédiate du réseau et du type d'opération (**Dépôt** / **Retrait**).
+- Calcul instantané de la commission selon les grilles officielles par paliers de chaque opérateur.
+- Support du mode hors grille pour les transactions exceptionnelles.
+- Historique chronologique complet avec bilans journaliers et mensuels.
+
+### 2. Architecture Multi-Pays & Multi-Réseaux
+Prise en charge native des configurations et opérateurs de 6 pays :
+- 🇧🇯 **Bénin** : MTN Mobile Money, Moov Money, Celtiis Cash
+- 🇹🇬 **Togo** : T-Money (Togocom), Moov Money Togo
+- 🇨🇮 **Côte d'Ivoire** : Orange Money, MTN MoMo, Moov Money, Wave
+- 🇸🇳 **Sénégal** : Orange Money, Wave Sénégal, Free Money
+- 🇧🇫 **Burkina Faso** : Orange Money, Moov Money Burkina
+- 🇲🇱 **Mali** : Orange Money, Moov Africa Malitel
+
+### 3. Espace Propriétaire / Patron (Multi-Kiosques)
+- **Liaison sécurisée** : Association d'un agent au tableau de bord du patron via un code d'accès confidentiel à 6 chiffres et le numéro de téléphone.
+- **Normalisation intelligente** : Reconnaissance automatique des numéros internationaux (E.164) et locaux.
+- **Suivi en temps réel** : Consultation consolidée des volumes de transactions, commissions et ventilations dépôts/retraits pour chaque kiosque.
+- **Fiches récapitulatives** : Génération et partage de rapports certifiés par agent.
+
+### 4. Résilience Hors-Ligne (Offline-First) & Cloud
+- **Fonctionnement hors-ligne autonome** : Base locale SQLite chiffrée permettant d'enregistrer les opérations sans aucune connexion internet.
+- **Synchronisation automatique** : Dès le retour du réseau, les données sont sauvegardées en arrière-plan sur Supabase.
+- **Sécurité RLS (Row Level Security)** : Cloisonnement strict des données au niveau de la base PostgreSQL.
+
+### 5. Modèle Économique & Passerelle de Paiement
+- **Période d'essai** : 7 jours gratuits offerts dès l'activation du compte.
+- **Abonnement** : 800 F CFA / mois.
+- **Paiement intégré via SasPay** : Règlement sécurisé par Mobile Money ou carte bancaire avec activation immédiate en temps réel.
+
+### 6. Espace Super-Admin
+- Supervision globale du parc d'agents et de kiosques.
+- Statistiques de performance macro-économiques.
+- Prolongation manuelle d'abonnements et gestion des retours d'expérience.
+
+---
+
+## 🛠️ Stack Technique
+
+- **Framework Mobile** : Flutter (Dart 3.x)
+- **Base de données Locale** : SQLite (`sqflite`)
+- **Backend & Authentification** : Supabase (PostgreSQL, Row Level Security, Edge Functions)
+- **Passerelle de Paiement** : SasPay Checkout
+- **Exports & Reporting** : Moteur PDF vectoriel (`pdf`, `printing`) & Tableurs Excel/CSV
+
+---
+
+## 📦 Installation & Démarrage
+
+### Prérequis
+- Flutter SDK (≥ 3.0.0)
+- Android Studio / VS Code avec extensions Flutter & Dart
+- Un appareil Android physique ou un émulateur
+
+### Lancement en développement
+1. Cloner le dépôt :
+   ```bash
+   git clone https://github.com/JuniorB573/carnet_momo.git
+   cd carnet_momo
    ```
+2. Installer les dépendances :
+   ```bash
    flutter pub get
    ```
-   (télécharge les dépendances listées dans `pubspec.yaml`)
-3. Branche ton téléphone Android en USB (débogage USB activé).
-4. Vérifie que ton téléphone est bien détecté :
-   ```
-   flutter devices
-   ```
-5. Lance l'app :
-   ```
+3. Lancer l'application :
+   ```bash
    flutter run
    ```
 
-## Si tu rencontres une erreur
-Copie-colle le message d'erreur exact ici dans le chat, on la corrige ensemble.
+### Compilation de l'APK Release
+```bash
+flutter build apk --release
+```
+L'APK généré sera disponible dans le dossier `build/app/outputs/flutter-apk/app-release.apk`.
 
-## Un point de sécurité à changer avant tout vrai lancement
-Dans `lib/services/subscription_service.dart`, la variable `_secretSalt` doit être
-remplacée par une vraie valeur secrète (pas celle laissée par défaut) avant de
-distribuer l'app à de vrais agents — c'est elle qui protège la génération des
-codes d'activation.
+---
+
+## 📄 Documentation
+
+Le cahier des charges fonctionnel et technique détaillé du projet est consultable dans le document :
+- **[Cahier_des_Charges_Carnet_MoMo.pdf](./Cahier_des_Charges_Carnet_MoMo.pdf)** (Version 2.1.0)
