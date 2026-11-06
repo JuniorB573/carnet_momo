@@ -324,6 +324,7 @@ class AuthService {
     }
   }
 
+  Future<void> signOut() async {
     // Effacer les données locales SQLite avant de se déconnecter,
     // pour qu'un autre compte ne voie jamais cet historique.
     await DatabaseService.instance.clearAllData();
