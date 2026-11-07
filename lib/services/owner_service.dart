@@ -168,34 +168,29 @@ class OwnerService {
       throw Exception('Le code d’accès patron doit comporter exactement 6 chiffres.');
     }
 
-    // Construire une liste exhaustive de variantes du numéro pour garantir le matching
-    // ex: 014733535, 229014733535, +229014733535, 4733535...
+    // Construire une liste exhaustive de variantes du numéro pour garantir le matching (chiffres uniquement pour PostgREST)
     final candidates = <String>{cleanPhone};
     if (cleanPhone.startsWith('229')) {
       final without229 = cleanPhone.substring(3);
       candidates.add(without229);
-      candidates.add('+$cleanPhone');
       if (without229.startsWith('01')) {
         candidates.add(without229.substring(2));
       }
     } else {
       candidates.add('229$cleanPhone');
-      candidates.add('+229$cleanPhone');
     }
 
     if (cleanPhone.startsWith('01')) {
       final without01 = cleanPhone.substring(2);
       candidates.add(without01);
       candidates.add('229$without01');
-      candidates.add('+229$without01');
+      candidates.add('22901$without01');
     }
 
     if (cleanPhone.startsWith('228')) {
       candidates.add(cleanPhone.substring(3));
-      candidates.add('+$cleanPhone');
     } else {
       candidates.add('228$cleanPhone');
-      candidates.add('+228$cleanPhone');
     }
 
     if (cleanPhone.length >= 8) {
@@ -205,11 +200,24 @@ class OwnerService {
     final user = _client.auth.currentUser;
     Map<String, dynamic>? agentRow;
     String? serverCode;
+    String? supabaseErrorDetail;
 
     // 1. Tenter la recherche dans Supabase
     try {
-      final orFilter = candidates.map((c) => 'phone_number.eq.$c').join(',');
+      final list = await _client
+          .from('agents')
+          .select('id, phone_number, owner_code')
+          .inFilter('phone_number', candidates.toList())
+          .limit(10);
+      if (list.isNotEmpty) {
+        agentRow = list.first;
+        serverCode = agentRow['owner_code'] as String?;
+      }
+    } catch (e1) {
+      debugPrint('[OwnerService] Erreur inFilter agents: $e1');
+      supabaseErrorDetail = e1.toString();
       try {
+        final orFilter = candidates.map((c) => 'phone_number.eq.$c').join(',');
         final list = await _client
             .from('agents')
             .select('id, phone_number, owner_code')
@@ -219,20 +227,9 @@ class OwnerService {
           agentRow = list.first;
           serverCode = agentRow['owner_code'] as String?;
         }
-      } catch (e1) {
-        debugPrint('[OwnerService] Colonne owner_code absente ou erreur select: $e1');
-        // Fallback sans owner_code si la colonne n'est pas encore créée
-        final list = await _client
-            .from('agents')
-            .select('id, phone_number')
-            .or(orFilter)
-            .limit(10);
-        if (list.isNotEmpty) {
-          agentRow = list.first;
-        }
+      } catch (e2) {
+        debugPrint('[OwnerService] Erreur orFilter agents: $e2');
       }
-    } catch (e) {
-      debugPrint('[OwnerService] Erreur recherche Supabase agents: $e');
     }
 
     // 2. Vérifier si l'utilisateur teste sur son propre compte / téléphone
@@ -252,15 +249,18 @@ class OwnerService {
 
     // 3. Validation stricte : l'agent doit exister et le code doit correspondre à ce numéro
     if (agentRow == null) {
-      throw Exception('Aucun compte agent trouvé avec le numéro $phone. Demandez à votre agent de créer son compte sur Carnet MoMo.');
+      if (supabaseErrorDetail != null && supabaseErrorDetail.contains('owner_code')) {
+        throw Exception('La colonne "owner_code" n’est pas encore active dans Supabase. Exécutez le script SQL supabase_owner_kiosks.sql dans la console Supabase.');
+      }
+      throw Exception('Aucun compte agent trouvé avec le numéro $phone.\n1. Assurez-vous que votre ami a bien créé son compte.\n2. Assurez-vous que le script SQL des kiosques est exécuté dans Supabase.');
     }
 
     if (serverCode == null || serverCode.trim().isEmpty) {
-      throw Exception('L’agent n’a pas encore généré de code. Demandez-lui d’ouvrir Réglages > "Code d’accès patron" sur son téléphone.');
+      throw Exception('L’agent n’a pas encore de code synchronisé en ligne.\nDemandez à votre ami d’ouvrir Réglages > "Code d’accès patron" sur son téléphone avec internet actif pour générer et synchroniser son code.');
     }
 
     if (serverCode.trim() != cleanCode) {
-      throw Exception('Code d’accès incorrect. Ce code ne correspond pas au numéro $phone.');
+      throw Exception('Code d’accès incorrect. Le code saisi ($cleanCode) ne correspond pas au numéro $phone.');
     }
 
     final agentId = agentRow['id'] as String;
