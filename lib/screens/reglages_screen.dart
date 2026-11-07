@@ -343,7 +343,7 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
                   setDialogState(() => localError = e.toString());
                 }
               },
-              child: Text(t('enregistrer', _lang)),
+              child: Text(t('enregistrer_btn', _lang)),
             ),
           ],
         ),
@@ -616,7 +616,7 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
                               });
                             }
                           },
-                    child: Text(loading ? t('un_instant', _lang) : t('enregistrer', _lang)),
+                    child: Text(loading ? t('un_instant', _lang) : t('enregistrer_btn', _lang)),
                   ),
                 ),
               ],
