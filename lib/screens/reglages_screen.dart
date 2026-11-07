@@ -176,6 +176,65 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
     );
   }
 
+  Widget _agentProfileCard() {
+    return FutureBuilder<List<String?>>(
+      future: Future.wait([
+        AuthService().getLocalPseudo(),
+        AuthService().getRegisteredPhone(),
+      ]),
+      builder: (context, snapshot) {
+        final pseudo = snapshot.data?[0];
+        final phone = snapshot.data?[1];
+        if ((pseudo == null || pseudo.isEmpty) && (phone == null || phone.isEmpty)) {
+          return const SizedBox.shrink();
+        }
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 18),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: AppColors.green.withValues(alpha: 0.15),
+                  child: Text(
+                    (pseudo != null && pseudo.isNotEmpty)
+                        ? pseudo.substring(0, 1).toUpperCase()
+                        : 'A',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.green),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (pseudo != null && pseudo.isNotEmpty)
+                        Text(
+                          pseudo,
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.ink),
+                        ),
+                      if (phone != null && phone.isNotEmpty)
+                        Text(
+                          phone,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: pseudo != null && pseudo.isNotEmpty ? AppColors.inkSoft : AppColors.ink,
+                            fontWeight: pseudo != null && pseudo.isNotEmpty ? FontWeight.normal : FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _ownerSpaceCard() {
     return Card(
       child: InkWell(
@@ -684,6 +743,7 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
         Text(t('reglages', _lang),
             style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: AppColors.ink)),
         const SizedBox(height: 14),
+        _agentProfileCard(),
         Text(t('abonnement', _lang).toUpperCase(),
             style: const TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w700)),
         const SizedBox(height: 10),

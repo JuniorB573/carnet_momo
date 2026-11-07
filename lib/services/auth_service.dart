@@ -64,6 +64,18 @@ class AuthService {
     await prefs.setString('local_role', role);
   }
 
+  /// Stocke le pseudo de l'agent localement.
+  Future<void> _storeLocalPseudo(String pseudo) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('local_pseudo', pseudo.trim());
+  }
+
+  /// Récupère le pseudo stocké en local (peut être null si non renseigné).
+  Future<String?> getLocalPseudo() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('local_pseudo');
+  }
+
   /// Récupère le rôle stocké en local (peut être null si jamais connecté).
   Future<String?> getLocalRole() async {
     final prefs = await SharedPreferences.getInstance();
@@ -126,27 +138,45 @@ class AuthService {
     return null;
   }
 
-  Future<AuthResponse> signUp(String phone, String pin, {String? whatsapp, String? country}) async {
+  Future<AuthResponse> signUp(String phone, String pin, {String? whatsapp, String? country, String? pseudo}) async {
     final normalized = _normalizePhone(phone);
     final normalizedWhatsapp = whatsapp != null && whatsapp.trim().isNotEmpty
         ? _normalizePhone(whatsapp)
         : normalized; // Même numéro par défaut si non précisé.
+    final cleanPseudo = pseudo?.trim();
 
     final response = await _client.auth.signUp(
       email: _toInternalEmail(phone),
       password: _padPin(pin),
+      data: {
+        if (cleanPseudo != null && cleanPseudo.isNotEmpty) 'name': cleanPseudo,
+        if (cleanPseudo != null && cleanPseudo.isNotEmpty) 'pseudo': cleanPseudo,
+        if (country != null) 'country': country,
+      },
     );
 
     final user = response.user;
     if (user != null) {
       final deviceId = await _getDeviceId();
-      await _client.from('agents').insert({
-        'id': user.id,
-        'phone_number': normalized,
-        'whatsapp_number': normalizedWhatsapp,
-        if (country != null) 'country': country,
-        if (deviceId != null) 'device_id': deviceId,
-      });
+      try {
+        await _client.from('agents').insert({
+          'id': user.id,
+          'phone_number': normalized,
+          'whatsapp_number': normalizedWhatsapp,
+          if (country != null) 'country': country,
+          if (deviceId != null) 'device_id': deviceId,
+          if (cleanPseudo != null && cleanPseudo.isNotEmpty) 'pseudo': cleanPseudo,
+        });
+      } catch (_) {
+        // Fallback si la colonne 'pseudo' n'a pas encore été créée dans la table agents
+        await _client.from('agents').insert({
+          'id': user.id,
+          'phone_number': normalized,
+          'whatsapp_number': normalizedWhatsapp,
+          if (country != null) 'country': country,
+          if (deviceId != null) 'device_id': deviceId,
+        });
+      }
       await _client.from('subscriptions').insert({
         'agent_id': user.id,
         'trial_start': DateTime.now().toUtc().toIso8601String(),
@@ -155,6 +185,9 @@ class AuthService {
 
     await _storeLocalPin(pin);
     await _storeLocalPhone(phone);
+    if (cleanPseudo != null && cleanPseudo.isNotEmpty) {
+      await _storeLocalPseudo(cleanPseudo);
+    }
     await _storeLocalRole('agent'); // Nouveau compte = agent par défaut
     return response;
   }
@@ -262,10 +295,14 @@ class AuthService {
       await _storeLocalPin(pin);
       await _storeLocalPhone(phone);
 
-      // Récupérer et stocker le rôle depuis Supabase
+      // Récupérer et stocker le rôle et le pseudo depuis Supabase
       try {
         final user = response.user;
         if (user != null) {
+          final metaPseudo = user.userMetadata?['pseudo'] as String? ?? user.userMetadata?['name'] as String?;
+          if (metaPseudo != null && metaPseudo.trim().isNotEmpty) {
+            await _storeLocalPseudo(metaPseudo);
+          }
           final row = await _client
               .from('agents')
               .select('role')

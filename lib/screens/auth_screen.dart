@@ -30,6 +30,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _pinCtrl = TextEditingController();
   final _whatsappCtrl = TextEditingController();
   final _otpCtrl = TextEditingController();
+  final _pseudoCtrl = TextEditingController();
   bool _isSignUp = true;
   bool _sameAsPhone = true;
   bool _loading = false;
@@ -102,6 +103,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _pinCtrl.dispose();
     _whatsappCtrl.dispose();
     _otpCtrl.dispose();
+    _pseudoCtrl.dispose();
     _lockoutTimer?.cancel();
     super.dispose();
   }
@@ -140,6 +142,12 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     if (_isSignUp) {
+      final pseudo = _pseudoCtrl.text.trim();
+      if (pseudo.length < 2) {
+        setState(() => _error = t('pseudo_invalide', _lang));
+        return;
+      }
+
       // Validation stricte du format et de la longueur selon le pays choisi
       final phoneError = validatePhoneForCountry(phone, _selectedCountry, isWhatsApp: false, lang: _lang);
       if (phoneError != null) {
@@ -331,6 +339,7 @@ class _AuthScreenState extends State<AuthScreen> {
         pin,
         whatsapp: _sameAsPhone ? phone : _whatsappCtrl.text.trim(),
         country: _selectedCountry,
+        pseudo: _pseudoCtrl.text.trim(),
       );
       await widget.countryController.setCountry(_selectedCountry);
 
@@ -638,6 +647,21 @@ class _AuthScreenState extends State<AuthScreen> {
             children: kCountries.map((c) => _countryChip(c)).toList(),
           ),
           const SizedBox(height: 18),
+        ],
+
+        if (_isSignUp) ...[
+          Text(t('pseudo_agent_label', _lang).toUpperCase(),
+              style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _pseudoCtrl,
+            textCapitalization: TextCapitalization.words,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.person_outline, size: 20, color: AppColors.inkMuted),
+              hintText: t('pseudo_agent_hint', _lang),
+            ),
+          ),
+          const SizedBox(height: 16),
         ],
 
         Text(t('numero_telephone', _lang).toUpperCase(),
