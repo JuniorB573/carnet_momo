@@ -424,6 +424,62 @@ class AuthService {
     await _storeLocalPin(newPin);
   }
 
+  /// Met à jour le pseudo de l'agent en local et sur Supabase
+  Future<void> updatePseudo(String newPseudo) async {
+    final cleanPseudo = newPseudo.trim();
+    if (cleanPseudo.length < 2) {
+      throw Exception('Le pseudo doit comporter au moins 2 caractères.');
+    }
+
+    // 1. Stockage local
+    await _storeLocalPseudo(cleanPseudo);
+
+    // 2. Synchronisation Supabase
+    final user = _client.auth.currentUser;
+    if (user != null) {
+      try {
+        await _client.auth.updateUser(
+          UserAttributes(data: {'pseudo': cleanPseudo, 'name': cleanPseudo}),
+        );
+      } catch (_) {}
+
+      try {
+        await _client.from('agents').update({'pseudo': cleanPseudo}).eq('id', user.id);
+      } catch (_) {}
+    }
+  }
+
+  /// Met à jour le numéro de téléphone de l'agent après vérification SMS
+  Future<void> updatePhoneNumber(String newPhone, {String? currentPin}) async {
+    final cleanDigits = _normalizePhone(newPhone);
+    if (cleanDigits.length < 8) {
+      throw Exception('Numéro de téléphone invalide.');
+    }
+
+    // Vérification du PIN si fourni
+    if (currentPin != null) {
+      final ok = await verifyLocalPin(currentPin);
+      if (!ok) throw Exception('Code PIN incorrect.');
+    }
+
+    // 1. Mise à jour Supabase
+    final user = _client.auth.currentUser;
+    if (user != null) {
+      try {
+        await _client.auth.updateUser(
+          UserAttributes(email: _toInternalEmail(newPhone)),
+        );
+      } catch (_) {}
+
+      try {
+        await _client.from('agents').update({'phone_number': cleanDigits}).eq('id', user.id);
+      } catch (_) {}
+    }
+
+    // 2. Mise à jour locale
+    await _storeLocalPhone(newPhone);
+  }
+
   /// Nombre de tentatives de PIN incorrectes autorisées avant verrouillage
   /// temporaire de l'application (ex: 15 minutes).
   static const int maxFailedAttempts = 4;

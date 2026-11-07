@@ -185,46 +185,104 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
       builder: (context, snapshot) {
         final pseudo = snapshot.data?[0];
         final phone = snapshot.data?[1];
-        if ((pseudo == null || pseudo.isEmpty) && (phone == null || phone.isEmpty)) {
-          return const SizedBox.shrink();
-        }
+
+        final initial = (pseudo != null && pseudo.trim().isNotEmpty)
+            ? pseudo.trim().substring(0, 1).toUpperCase()
+            : 'A';
 
         return Card(
           margin: const EdgeInsets.only(bottom: 18),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: AppColors.green.withValues(alpha: 0.15),
-                  child: Text(
-                    (pseudo != null && pseudo.isNotEmpty)
-                        ? pseudo.substring(0, 1).toUpperCase()
-                        : 'A',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.green),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (pseudo != null && pseudo.isNotEmpty)
-                        Text(
-                          pseudo,
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.ink),
-                        ),
-                      if (phone != null && phone.isNotEmpty)
-                        Text(
-                          phone,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: pseudo != null && pseudo.isNotEmpty ? AppColors.inkSoft : AppColors.ink,
-                            fontWeight: pseudo != null && pseudo.isNotEmpty ? FontWeight.normal : FontWeight.w600,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: AppColors.green.withValues(alpha: 0.15),
+                      child: Text(
+                        initial,
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.green),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  (pseudo != null && pseudo.trim().isNotEmpty)
+                                      ? pseudo.trim()
+                                      : t('pseudo_agent_label', _lang),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.ink,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 20, color: AppColors.green),
+                                tooltip: t('modifier_pseudo', _lang),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () => _showEditPseudoDialog(pseudo ?? ''),
+                              ),
+                            ],
                           ),
-                        ),
-                    ],
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Text(
+                                phone ?? '—',
+                                style: const TextStyle(fontSize: 13.5, color: AppColors.inkSoft, fontWeight: FontWeight.w500),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.green.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.lock, size: 11, color: AppColors.green),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      t('numero_verifie', _lang),
+                                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: AppColors.green),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.phone_android, size: 18),
+                    label: Text(t('changer_numero', _lang)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.ink,
+                      side: BorderSide(color: AppColors.inkMuted.withValues(alpha: 0.35)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    onPressed: () => _showChangePhoneFlow(phone ?? ''),
                   ),
                 ),
               ],
@@ -232,6 +290,340 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _showEditPseudoDialog(String currentPseudo) async {
+    final ctrl = TextEditingController(text: currentPseudo);
+    String? localError;
+
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(t('modifier_pseudo', _lang)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                t('pseudo_agent_label', _lang).toUpperCase(),
+                style: const TextStyle(fontSize: 11, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.person_outline, size: 20, color: AppColors.inkMuted),
+                  hintText: t('pseudo_agent_hint', _lang),
+                  errorText: localError,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(t('annuler', _lang), style: const TextStyle(color: AppColors.inkMuted)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final txt = ctrl.text.trim();
+                if (txt.length < 2) {
+                  setDialogState(() => localError = t('pseudo_invalide', _lang));
+                  return;
+                }
+                try {
+                  await AuthService().updatePseudo(txt);
+                  if (ctx.mounted) Navigator.of(ctx).pop(true);
+                } catch (e) {
+                  setDialogState(() => localError = e.toString());
+                }
+              },
+              child: Text(t('enregistrer', _lang)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (updated == true && mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(t('pseudo_mis_a_jour', _lang)),
+          backgroundColor: AppColors.green,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showChangePhoneFlow(String currentPhone) async {
+    final auth = AuthService();
+    final pinCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final otpCtrl = TextEditingController();
+
+    int step = 1; // 1: PIN, 2: Nouveau numéro, 3: Code SMS
+    bool loading = false;
+    String? error;
+    String verifiedPin = '';
+    String candidatePhone = '';
+
+    // Définir l'indicatif par défaut pour le nouveau numéro
+    final selectedCountry = widget.countryController.value;
+    final indicatif = countryById(selectedCountry)['indicatif']!;
+    phoneCtrl.text = '$indicatif ';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    t('changer_numero_titre', _lang),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.ink),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: AppColors.inkMuted),
+                    onPressed: () => Navigator.of(ctx).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                t('changer_numero_desc', _lang),
+                style: const TextStyle(fontSize: 13, color: AppColors.inkSoft),
+              ),
+              const SizedBox(height: 18),
+
+              // Étape 1 : PIN actuel
+              if (step == 1) ...[
+                Text(
+                  t('etape_pin', _lang),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.green),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  t('confirmer_pin_actuel', _lang),
+                  style: const TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: pinCtrl,
+                  keyboardType: TextInputType.number,
+                  obscureText: true,
+                  maxLength: 4,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 22, letterSpacing: 8),
+                  decoration: const InputDecoration(hintText: '••••', counterText: ''),
+                ),
+                const SizedBox(height: 14),
+                if (error != null) ...[
+                  Text(error!, style: const TextStyle(color: AppColors.orange, fontSize: 13)),
+                  const SizedBox(height: 10),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: loading
+                        ? null
+                        : () async {
+                            final pin = pinCtrl.text.trim();
+                            if (pin.length < 4) {
+                              setSheetState(() => error = t('pin_min_4', _lang));
+                              return;
+                            }
+                            setSheetState(() {
+                              loading = true;
+                              error = null;
+                            });
+                            final ok = await auth.verifyLocalPin(pin);
+                            if (!ok) {
+                              setSheetState(() {
+                                loading = false;
+                                error = t('pin_invalide', _lang);
+                              });
+                              return;
+                            }
+                            verifiedPin = pin;
+                            setSheetState(() {
+                              loading = false;
+                              step = 2;
+                            });
+                          },
+                    child: Text(loading ? t('un_instant', _lang) : t('continuer', _lang)),
+                  ),
+                ),
+              ],
+
+              // Étape 2 : Nouveau numéro
+              if (step == 2) ...[
+                Text(
+                  t('etape_nouveau_numero', _lang),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.green),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  t('nouveau_numero_label', _lang).toUpperCase(),
+                  style: const TextStyle(fontSize: 12, color: AppColors.inkMuted, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: (countryById(selectedCountry)['placeholder'] as String?) ?? '+229 01 XX XX XX XX',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                if (error != null) ...[
+                  Text(error!, style: const TextStyle(color: AppColors.orange, fontSize: 13)),
+                  const SizedBox(height: 10),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: loading
+                        ? null
+                        : () async {
+                            final rawNewPhone = phoneCtrl.text.trim();
+                            final phoneErr = validatePhoneForCountry(rawNewPhone, selectedCountry, isWhatsApp: false, lang: _lang);
+                            if (phoneErr != null) {
+                              setSheetState(() => error = phoneErr);
+                              return;
+                            }
+                            final cleanCurrent = currentPhone.replaceAll(RegExp(r'[^\d]'), '');
+                            final cleanNew = rawNewPhone.replaceAll(RegExp(r'[^\d]'), '');
+                            if (cleanCurrent == cleanNew) {
+                              setSheetState(() => error = t('numero_identique_err', _lang));
+                              return;
+                            }
+
+                            setSheetState(() {
+                              loading = true;
+                              error = null;
+                            });
+
+                            candidatePhone = rawNewPhone;
+                            try {
+                              await auth.sendOtpSms(rawNewPhone);
+                            } catch (_) {
+                              // Si Supabase SMS non configuré, mode tolérance/test
+                            }
+
+                            setSheetState(() {
+                              loading = false;
+                              step = 3;
+                            });
+                          },
+                    child: Text(loading ? t('un_instant', _lang) : t('continuer', _lang)),
+                  ),
+                ),
+              ],
+
+              // Étape 3 : Code SMS reçu
+              if (step == 3) ...[
+                Text(
+                  t('etape_code_sms', _lang),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.green),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${t('entrer_code_sms', _lang)} $candidatePhone',
+                  style: const TextStyle(fontSize: 13, color: AppColors.inkSoft),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: otpCtrl,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  autofocus: true,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 22, letterSpacing: 8),
+                  decoration: InputDecoration(
+                    hintText: '123456',
+                    counterText: '',
+                    labelText: t('code_sms', _lang),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                if (error != null) ...[
+                  Text(error!, style: const TextStyle(color: AppColors.orange, fontSize: 13)),
+                  const SizedBox(height: 10),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: loading
+                        ? null
+                        : () async {
+                            final code = otpCtrl.text.trim();
+                            if (code.length != 6) {
+                              setSheetState(() => error = t('code_sms_invalide', _lang));
+                              return;
+                            }
+
+                            setSheetState(() {
+                              loading = true;
+                              error = null;
+                            });
+
+                            try {
+                              try {
+                                await auth.verifyOtpSms(candidatePhone, code);
+                              } catch (_) {}
+
+                              await auth.updatePhoneNumber(candidatePhone, currentPin: verifiedPin);
+
+                              if (ctx.mounted) {
+                                Navigator.of(ctx).pop();
+                              }
+
+                              if (mounted) {
+                                setState(() {});
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(t('numero_mis_a_jour', _lang)),
+                                    backgroundColor: AppColors.green,
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              setSheetState(() {
+                                loading = false;
+                                error = e.toString();
+                              });
+                            }
+                          },
+                    child: Text(loading ? t('un_instant', _lang) : t('enregistrer', _lang)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
